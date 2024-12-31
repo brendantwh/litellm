@@ -3214,15 +3214,87 @@ async def model_list(
         user_model=user_model,
         infer_model_from_keys=general_settings.get("infer_model_from_keys", False),
     )
+
+    # Sort models by mode -> provider -> model
+    def get_sort_tuple(model_name: str) -> tuple:
+        try:
+            # Define mode order
+            mode_order = {
+                "chat": 1,
+                "audio": 2,
+                "embeddings": 3,
+                None: 99  # Default for undefined modes
+            }
+            
+            # Define provider order
+            provider_order = {
+                "openai": 1,
+                "azure": 2,
+                "anthropic": 3,
+                "google": 4,
+                "meta": 5,
+                "deepseek": 6,
+                "mistral": 7,
+                "cohere": 8,
+                "other": 99  # Always last
+            }
+
+            # First try to get mode, provider and sort order from model info
+            mode = None
+            provider = "other"
+            sort_order = 999999  # Default high number for models without sort order
+            
+            if llm_router is not None:
+                model_info = llm_router.get_model_info(model_name)
+                if model_info:
+                    if "mode" in model_info:
+                        mode = model_info["mode"]
+                    if "parent_provider" in model_info:
+                        provider = model_info["parent_provider"]
+                    if "sort" in model_info:
+                        sort_order = model_info["sort"]
+
+            # Fallback to prefix-based detection if no provider found
+            if provider == "other":
+                if model_name.startswith("azure/"):
+                    provider = "azure"
+                elif model_name.startswith("gpt-") or model_name.startswith("whisper-"):
+                    provider = "openai"
+                elif model_name.startswith("claude-"):
+                    provider = "anthropic"
+                elif model_name.startswith("gemini-") or model_name.startswith("palm-"):
+                    provider = "google"
+                elif model_name.startswith("meta-") or model_name.startswith("llama-"):
+                    provider = "meta"
+                elif model_name.startswith("deepseek-"):
+                    provider = "deepseek"
+                elif model_name.startswith("mistral-"):
+                    provider = "mistral"
+                elif model_name.startswith("command-"):
+                    provider = "cohere"
+
+            return (
+                mode_order.get(mode, 99),  # First sort by mode, default to 99 for unknown modes
+                provider_order.get(provider, 98),  # Then by provider
+                sort_order,  # Then by model-specific sort order
+                provider  # Keep provider string for owned_by field
+            )
+        except Exception:
+            return (99, 99, 999999, "other")  # If any error occurs, return defaults
+
+    # Sort the models list
+    sorted_models = [(model, get_sort_tuple(model)[3]) for model in all_models]  # Store provider with model
+    sorted_models.sort(key=lambda x: get_sort_tuple(x[0]))  # Sort by mode, provider, and sort order
+
     return dict(
         data=[
             {
                 "id": model,
                 "object": "model",
                 "created": 1677610602,
-                "owned_by": "openai",
+                "owned_by": provider,
             }
-            for model in all_models
+            for model, provider in sorted_models
         ],
         object="list",
     )
