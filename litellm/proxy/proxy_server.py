@@ -3214,50 +3214,57 @@ async def model_list(
         infer_model_from_keys=general_settings.get("infer_model_from_keys", False),
     )
 
-    # Now get model info for each unique model name
+    # Map model names to their info from llm_model_list
     models_with_info = []
+    model_list_map = {m["model_name"]: m for m in (llm_model_list or [])}
+    verbose_proxy_logger.debug("model_list_map: %s", model_list_map)
+    
     for model_name in model_names:
-        try:
-            model_info = {}
-            if llm_router is not None:
-                model_info = llm_router.get_model_info(model_name) or {}
-            
-            # If no model info found, try to infer basic info from model name
-            if not model_info:
-                if model_name.startswith("gpt-"):
-                    model_info = {"mode": "chat", "parent_provider": "openai"}
-                elif model_name.startswith("claude-"):
-                    model_info = {"mode": "chat", "parent_provider": "anthropic"}
-                elif model_name.startswith("gemini-"):
-                    model_info = {"mode": "chat", "parent_provider": "google"}
-                elif model_name.startswith("llama-"):
-                    model_info = {"mode": "chat", "parent_provider": "meta"}
-                elif model_name.startswith("deepseek-"):
-                    model_info = {"mode": "chat", "parent_provider": "deepseek"}
-                elif model_name.startswith("tts-"):
-                    model_info = {"mode": "audio_speech", "parent_provider": "openai"}
-                elif model_name.startswith("whisper-"):
-                    model_info = {"mode": "audio_transcription", "parent_provider": "openai"}
-                elif model_name.startswith("text-embedding-3-"):
-                    model_info = {"mode": "embedding", "parent_provider": "openai"}
-                elif model_name.startswith("text-embedding-00"):
-                    model_info = {"mode": "embedding", "parent_provider": "google"}
-                else:
-                    model_info = {"mode": None, "parent_provider": "other"}
-            
-            models_with_info.append((model_name, model_info))
-        except Exception as e:
-            verbose_proxy_logger.debug(f"Error getting model info for {model_name}: {str(e)}")
-            models_with_info.append((model_name, {}))
+        model_info = {
+            "id": model_name,
+            "object": "model",
+            "created": 1677610602,
+            "owned_by": "openai",
+        }
+        if model_name in model_list_map:
+            model = model_list_map[model_name]
+            litellm_params = model.get("litellm_params", {})
+            model_info.update({
+                "mode": model.get("model_info", {}).get("mode"),
+                "owned_by": model.get("model_info", {}).get("parent_provider", "other"),
+                "sort": model.get("model_info", {}).get("sort", 999999)
+            })
+        else:
+            # Fallback to name-based inference if not in llm_model_list
+            if model_name.startswith("gpt-"):
+                model_info.update({"mode": "chat", "owned_by": "openai"})
+            elif model_name.startswith("claude-"):
+                model_info.update({"mode": "chat", "owned_by": "anthropic"})
+            elif model_name.startswith("gemini-"):
+                model_info.update({"mode": "chat", "owned_by": "google"})
+            elif model_name.startswith("llama-"):
+                model_info.update({"mode": "chat", "owned_by": "meta"})
+            elif model_name.startswith("deepseek-"):
+                model_info.update({"mode": "chat", "owned_by": "deepseek"})
+            elif model_name.startswith("tts-"):
+                model_info.update({"mode": "audio_speech", "owned_by": "openai"})
+            elif model_name.startswith("whisper-"):
+                model_info.update({"mode": "audio_transcription", "owned_by": "openai"})
+            elif model_name.startswith("text-embedding-3-"):
+                model_info.update({"mode": "embedding", "owned_by": "openai"})
+            elif model_name.startswith("text-embedding-00"):
+                model_info.update({"mode": "embedding", "owned_by": "google"})
+            else:
+                model_info.update({"mode": None, "owned_by": "other"})
+        verbose_proxy_logger.debug("model_info: %s", model_info)
+        models_with_info.append(model_info)
 
-    # Sort the models using the enhanced sorting function
-    def get_sort_tuple(model_tuple: tuple) -> tuple:
-        model_name, model_info = model_tuple
+    def get_sort_tuple(model_info: dict) -> tuple:
         try:
             # Define mode order
             mode_order = {
                 "chat": 1,
-                "audio_speech": 2,
+                "audio_speech": 2, 
                 "audio_transcription": 3,
                 "embedding": 4,
                 None: 99  # Default for undefined modes
@@ -3277,34 +3284,27 @@ async def model_list(
             }
 
             mode = model_info.get("mode")
-            provider = model_info.get("parent_provider", "other")
+            provider = model_info.get("owned_by", "other")
             sort_order = model_info.get("sort", 999999)
 
             return (
                 mode_order.get(mode, 99),  # First sort by mode
                 provider_order.get(provider, 98),  # Then by provider
                 sort_order,  # Then by model-specific sort order
-                provider  # Keep provider string for owned_by field
+                model_info.get("id", "")  # Use model id as final tiebreaker
             )
         except Exception as e:
-            verbose_proxy_logger.debug(f"Error in get_sort_tuple for model {model_name}: {str(e)}")
-            return (99, 99, 999999, "other")
+            verbose_proxy_logger.debug(f"Error in get_sort_tuple: {str(e)}")
+            return (99, 99, 999999, "")
 
-    # Sort models using the enhanced sorting
-    sorted_models = sorted(models_with_info, key=get_sort_tuple)
-
-    return dict(
-        data=[
-            {
-                "id": model_name,
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": model_info.get("parent_provider", "other"),
-            }
-            for model_name, model_info in sorted_models
-        ],
-        object="list",
-    )
+    # Sort models by sort value if available
+    sorted_models_with_info = sorted(models_with_info, key=get_sort_tuple)
+    
+    # Remove sort after sorting
+    for model in sorted_models_with_info:
+        model.pop("sort", None)
+    
+    return {"data": sorted_models_with_info, "object": "list"}
 
 
 @router.post(
