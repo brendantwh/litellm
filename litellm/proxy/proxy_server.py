@@ -3221,8 +3221,9 @@ async def model_list(
             # Define mode order
             mode_order = {
                 "chat": 1,
-                "audio": 2,
-                "embeddings": 3,
+                "audio_speech": 2,
+                "audio_transcription": 3,
+                "embedding": 4,
                 None: 99  # Default for undefined modes
             }
             
