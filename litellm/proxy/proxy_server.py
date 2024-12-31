@@ -3188,6 +3188,7 @@ async def model_list(
     This is just for compatibility with openai projects like aider.
     """
     global llm_model_list, general_settings, llm_router
+    verbose_proxy_logger.debug(f"llm_model_list: {llm_model_list}")
     all_models = []
     model_access_groups: Dict[str, List[str]] = defaultdict(list)
     ## CHECK IF MODEL RESTRICTIONS ARE SET AT KEY/TEAM LEVEL ##
@@ -3247,6 +3248,7 @@ async def model_list(
             
             if llm_router is not None:
                 model_info = llm_router.get_model_info(model_name)
+                verbose_proxy_logger.debug(f"model_info: {model_info}")
                 if model_info:
                     if "mode" in model_info:
                         mode = model_info["mode"]
@@ -3259,11 +3261,11 @@ async def model_list(
             if provider == "other":
                 if model_name.startswith("azure/"):
                     provider = "azure"
-                elif model_name.startswith("gpt-") or model_name.startswith("whisper-"):
+                elif model_name.startswith("gpt-") or model_name.startswith("chatgpt-") or model_name.startswith("o1") or model_name.startswith("tts-") or model_name.startswith("whisper-") or model_name.startswith("text-embedding-3-"):
                     provider = "openai"
                 elif model_name.startswith("claude-"):
                     provider = "anthropic"
-                elif model_name.startswith("gemini-") or model_name.startswith("palm-"):
+                elif model_name.startswith("gemini-") or model_name.startswith("palm-") or model_name.startswith("text-embedding-00"):
                     provider = "google"
                 elif model_name.startswith("meta-") or model_name.startswith("llama-"):
                     provider = "meta"
