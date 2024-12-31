@@ -3188,8 +3188,7 @@ async def model_list(
     This is just for compatibility with openai projects like aider.
     """
     global llm_model_list, general_settings, llm_router
-    verbose_proxy_logger.debug(f"llm_model_list: {llm_model_list}")
-    all_models = []
+
     model_access_groups: Dict[str, List[str]] = defaultdict(list)
     ## CHECK IF MODEL RESTRICTIONS ARE SET AT KEY/TEAM LEVEL ##
     if llm_router is None:
@@ -3197,27 +3196,63 @@ async def model_list(
     else:
         proxy_model_list = llm_router.get_model_names()
         model_access_groups = llm_router.get_model_access_groups()
-    key_models = get_key_models(
-        user_api_key_dict=user_api_key_dict,
-        proxy_model_list=proxy_model_list,
-        model_access_groups=model_access_groups,
-    )
 
-    team_models = get_team_models(
-        user_api_key_dict=user_api_key_dict,
-        proxy_model_list=proxy_model_list,
-        model_access_groups=model_access_groups,
-    )
-    all_models = get_complete_model_list(
-        key_models=key_models,
-        team_models=team_models,
-        proxy_model_list=proxy_model_list,
+    # Get unique model names first
+    model_names = get_complete_model_list(
+        key_models=get_key_models(
+            user_api_key_dict=user_api_key_dict,
+            proxy_model_list=proxy_model_list,
+            model_access_groups=model_access_groups,
+        ),
+        team_models=get_team_models(
+            user_api_key_dict=user_api_key_dict,
+            proxy_model_list=proxy_model_list,
+            model_access_groups=model_access_groups,
+        ),
+        proxy_model_list=proxy_model_list if llm_router else [],
         user_model=user_model,
         infer_model_from_keys=general_settings.get("infer_model_from_keys", False),
     )
 
-    # Sort models by mode -> provider -> model
-    def get_sort_tuple(model_name: str) -> tuple:
+    # Now get model info for each unique model name
+    models_with_info = []
+    for model_name in model_names:
+        try:
+            model_info = {}
+            if llm_router is not None:
+                model_info = llm_router.get_model_info(model_name) or {}
+            
+            # If no model info found, try to infer basic info from model name
+            if not model_info:
+                if model_name.startswith("gpt-"):
+                    model_info = {"mode": "chat", "parent_provider": "openai"}
+                elif model_name.startswith("claude-"):
+                    model_info = {"mode": "chat", "parent_provider": "anthropic"}
+                elif model_name.startswith("gemini-"):
+                    model_info = {"mode": "chat", "parent_provider": "google"}
+                elif model_name.startswith("llama-"):
+                    model_info = {"mode": "chat", "parent_provider": "meta"}
+                elif model_name.startswith("deepseek-"):
+                    model_info = {"mode": "chat", "parent_provider": "deepseek"}
+                elif model_name.startswith("tts-"):
+                    model_info = {"mode": "audio_speech", "parent_provider": "openai"}
+                elif model_name.startswith("whisper-"):
+                    model_info = {"mode": "audio_transcription", "parent_provider": "openai"}
+                elif model_name.startswith("text-embedding-3-"):
+                    model_info = {"mode": "embedding", "parent_provider": "openai"}
+                elif model_name.startswith("text-embedding-00"):
+                    model_info = {"mode": "embedding", "parent_provider": "google"}
+                else:
+                    model_info = {"mode": None, "parent_provider": "other"}
+            
+            models_with_info.append((model_name, model_info))
+        except Exception as e:
+            verbose_proxy_logger.debug(f"Error getting model info for {model_name}: {str(e)}")
+            models_with_info.append((model_name, {}))
+
+    # Sort the models using the enhanced sorting function
+    def get_sort_tuple(model_tuple: tuple) -> tuple:
+        model_name, model_info = model_tuple
         try:
             # Define mode order
             mode_order = {
@@ -3241,63 +3276,32 @@ async def model_list(
                 "other": 99  # Always last
             }
 
-            # First try to get mode, provider and sort order from model info
-            mode = None
-            provider = "other"
-            sort_order = 999999  # Default high number for models without sort order
-            
-            if llm_router is not None:
-                model_info = llm_router.get_model_info(model_name)
-                verbose_proxy_logger.debug(f"model_info: {model_info}")
-                if model_info:
-                    if "mode" in model_info:
-                        mode = model_info["mode"]
-                    if "parent_provider" in model_info:
-                        provider = model_info["parent_provider"]
-                    if "sort" in model_info:
-                        sort_order = model_info["sort"]
-
-            # Fallback to prefix-based detection if no provider found
-            if provider == "other":
-                if model_name.startswith("azure/"):
-                    provider = "azure"
-                elif model_name.startswith("gpt-") or model_name.startswith("chatgpt-") or model_name.startswith("o1") or model_name.startswith("tts-") or model_name.startswith("whisper-") or model_name.startswith("text-embedding-3-"):
-                    provider = "openai"
-                elif model_name.startswith("claude-"):
-                    provider = "anthropic"
-                elif model_name.startswith("gemini-") or model_name.startswith("palm-") or model_name.startswith("text-embedding-00"):
-                    provider = "google"
-                elif model_name.startswith("meta-") or model_name.startswith("llama-"):
-                    provider = "meta"
-                elif model_name.startswith("deepseek-"):
-                    provider = "deepseek"
-                elif model_name.startswith("mistral-"):
-                    provider = "mistral"
-                elif model_name.startswith("command-"):
-                    provider = "cohere"
+            mode = model_info.get("mode")
+            provider = model_info.get("parent_provider", "other")
+            sort_order = model_info.get("sort", 999999)
 
             return (
-                mode_order.get(mode, 99),  # First sort by mode, default to 99 for unknown modes
+                mode_order.get(mode, 99),  # First sort by mode
                 provider_order.get(provider, 98),  # Then by provider
                 sort_order,  # Then by model-specific sort order
                 provider  # Keep provider string for owned_by field
             )
-        except Exception:
-            return (99, 99, 999999, "other")  # If any error occurs, return defaults
+        except Exception as e:
+            verbose_proxy_logger.debug(f"Error in get_sort_tuple for model {model_name}: {str(e)}")
+            return (99, 99, 999999, "other")
 
-    # Sort the models list
-    sorted_models = [(model, get_sort_tuple(model)[3]) for model in all_models]  # Store provider with model
-    sorted_models.sort(key=lambda x: get_sort_tuple(x[0]))  # Sort by mode, provider, and sort order
+    # Sort models using the enhanced sorting
+    sorted_models = sorted(models_with_info, key=get_sort_tuple)
 
     return dict(
         data=[
             {
-                "id": model,
+                "id": model_name,
                 "object": "model",
                 "created": 1677610602,
-                "owned_by": provider,
+                "owned_by": model_info.get("parent_provider", "other"),
             }
-            for model, provider in sorted_models
+            for model_name, model_info in sorted_models
         ],
         object="list",
     )
