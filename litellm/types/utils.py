@@ -1074,10 +1074,10 @@ class EmbeddingResponse(OpenAIObject):
 
 
 class Logprobs(OpenAIObject):
-    text_offset: List[int]
-    token_logprobs: List[Union[float, None]]
-    tokens: List[str]
-    top_logprobs: List[Union[Dict[str, float], None]]
+    text_offset: Optional[List[int]]
+    token_logprobs: Optional[List[Union[float, None]]]
+    tokens: Optional[List[str]]
+    top_logprobs: Optional[List[Union[Dict[str, float], None]]]
 
 
 class TextChoices(OpenAIObject):
@@ -1678,6 +1678,8 @@ all_litellm_params = [
     "azure_ad_token_provider",
     "tenant_id",
     "client_id",
+    "azure_username",
+    "azure_password",
     "client_secret",
     "user_continue_message",
     "configurable_clientside_auth_params",
@@ -1797,6 +1799,9 @@ class LlmProviders(str, Enum):
     GALADRIEL = "galadriel"
     INFINITY = "infinity"
     DEEPGRAM = "deepgram"
+    AIOHTTP_OPENAI = "aiohttp_openai"
+    LANGFUSE = "langfuse"
+    HUMANLOOP = "humanloop"
 
 
 class LiteLLMLoggingBaseClass:

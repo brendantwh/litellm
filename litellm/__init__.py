@@ -44,10 +44,10 @@ from enum import Enum
 litellm_mode = os.getenv("LITELLM_MODE", "DEV")  # "PRODUCTION", "DEV"
 if litellm_mode == "DEV":
     dotenv.load_dotenv()
-#############################################
+###############################################
 if set_verbose == True:
     _turn_on_debug()
-#############################################
+###############################################
 ### Callbacks /Logging / Success / Failure Handlers #####
 input_callback: List[Union[str, Callable]] = []
 success_callback: List[Union[str, Callable]] = []
@@ -74,6 +74,7 @@ _custom_logger_compatible_callbacks_literal = Literal[
     "argilla",
     "mlflow",
     "langfuse",
+    "pagerduty",
     "humanloop",
 ]
 logged_real_time_event_types: Optional[Union[List[str], Literal["*"]]] = None
@@ -307,6 +308,7 @@ tag_budget_config: Optional[Dict[str, BudgetConfig]] = None
 max_end_user_budget: Optional[float] = None
 disable_end_user_cost_tracking: Optional[bool] = None
 disable_end_user_cost_tracking_prometheus_only: Optional[bool] = None
+custom_prometheus_metadata_labels: List[str] = []
 #### REQUEST PRIORITIZATION ####
 priority_reservation: Optional[Dict[str, float]] = None
 #### RELIABILITY ####
@@ -1015,6 +1017,7 @@ ALL_LITELLM_RESPONSE_TYPES = [
 
 from .llms.custom_llm import CustomLLM
 from .llms.openai_like.chat.handler import OpenAILikeChatConfig
+from .llms.aiohttp_openai.chat.transformation import AiohttpOpenAIChatConfig
 from .llms.galadriel.chat.transformation import GaladrielChatConfig
 from .llms.github.chat.transformation import GithubChatConfig
 from .llms.empower.chat.transformation import EmpowerChatConfig
@@ -1165,6 +1168,7 @@ from .llms.azure.azure import (
 from .llms.azure.chat.gpt_transformation import AzureOpenAIConfig
 from .llms.azure.completion.transformation import AzureOpenAITextConfig
 from .llms.hosted_vllm.chat.transformation import HostedVLLMChatConfig
+from .llms.litellm_proxy.chat.transformation import LiteLLMProxyChatConfig
 from .llms.vllm.completion.transformation import VLLMConfig
 from .llms.deepseek.chat.transformation import DeepSeekChatConfig
 from .llms.lm_studio.chat.transformation import LMStudioChatConfig

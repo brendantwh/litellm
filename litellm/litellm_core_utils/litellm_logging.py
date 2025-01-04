@@ -30,6 +30,7 @@ from litellm.cost_calculator import _select_model_name_for_cost_calc
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.integrations.mlflow import MlflowLogger
+from litellm.integrations.pagerduty.pagerduty import PagerDutyAlerting
 from litellm.litellm_core_utils.redact_messages import (
     redact_message_input_output_from_custom_logger,
     redact_message_input_output_from_logging,
@@ -1004,7 +1005,7 @@ class Logging(LiteLLMLoggingBaseClass):
                             isinstance(callback, CustomLogger)
                             and "_PROXY_" in callback.__class__.__name__
                         ):
-                            print_verbose("no-log request, skipping logging")
+                            verbose_logger.info("no-log request, skipping logging")
                             continue
                     if callback == "promptlayer" and promptLayerLogger is not None:
                         print_verbose("reaches promptlayer for logging!")
@@ -1992,7 +1993,7 @@ class Logging(LiteLLMLoggingBaseClass):
                     )
             except Exception as e:
                 verbose_logger.exception(
-                    "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while success \
+                    "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while failure \
                         logging {}\nCallback={}".format(
                         str(e), callback
                     )
@@ -2163,7 +2164,12 @@ def _init_custom_logger_compatible_class(  # noqa: PLR0915
     llm_router: Optional[
         Any
     ],  # expect litellm.Router, but typing errors due to circular import
+    custom_logger_init_args: Optional[dict] = {},
 ) -> Optional[CustomLogger]:
+    """
+    Initialize a custom logger compatible class
+    """
+    custom_logger_init_args = custom_logger_init_args or {}
     if logging_integration == "lago":
         for callback in _in_memory_loggers:
             if isinstance(callback, LagoLogger):
@@ -2386,6 +2392,13 @@ def _init_custom_logger_compatible_class(  # noqa: PLR0915
         langfuse_logger = LangfusePromptManagement()
         _in_memory_loggers.append(langfuse_logger)
         return langfuse_logger  # type: ignore
+    elif logging_integration == "pagerduty":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, PagerDutyAlerting):
+                return callback
+        pagerduty_logger = PagerDutyAlerting(**custom_logger_init_args)
+        _in_memory_loggers.append(pagerduty_logger)
+        return pagerduty_logger  # type: ignore
     elif logging_integration == "humanloop":
         for callback in _in_memory_loggers:
             if isinstance(callback, HumanloopLogger):
@@ -2508,6 +2521,10 @@ def get_custom_logger_compatible_class(  # noqa: PLR0915
     elif logging_integration == "mlflow":
         for callback in _in_memory_loggers:
             if isinstance(callback, MlflowLogger):
+                return callback
+    elif logging_integration == "pagerduty":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, PagerDutyAlerting):
                 return callback
 
     return None
@@ -3015,60 +3032,6 @@ def get_standard_logging_object_payload(
             "Error creating standard logging object - {}".format(str(e))
         )
         return None
-
-
-def truncate_standard_logging_payload_content(
-    standard_logging_object: StandardLoggingPayload,
-):
-    """
-    Truncate error strings and message content in logging payload
-
-    Some loggers like DataDog have a limit on the size of the payload. (1MB)
-
-    This function truncates the error string and the message content if they exceed a certain length.
-    """
-    MAX_STR_LENGTH = 10_000
-
-    # Truncate fields that might exceed max length
-    fields_to_truncate = ["error_str", "messages", "response"]
-    for field in fields_to_truncate:
-        _truncate_field(
-            standard_logging_object=standard_logging_object,
-            field_name=field,
-            max_length=MAX_STR_LENGTH,
-        )
-
-
-def _truncate_text(text: str, max_length: int) -> str:
-    """Truncate text if it exceeds max_length"""
-    return (
-        text[:max_length]
-        + "...truncated by litellm, this logger does not support large content"
-        if len(text) > max_length
-        else text
-    )
-
-
-def _truncate_field(
-    standard_logging_object: StandardLoggingPayload, field_name: str, max_length: int
-) -> None:
-    """
-    Helper function to truncate a field in the logging payload
-
-    This converts the field to a string and then truncates it if it exceeds the max length.
-
-    Why convert to string ?
-    1. User was sending a poorly formatted list for `messages` field, we could not predict where they would send content
-        - Converting to string and then truncating the logged content catches this
-    2. We want to avoid modifying the original `messages`, `response`, and `error_str` in the logging payload since these are in kwargs and could be returned to the user
-    """
-    field_value = standard_logging_object.get(field_name)  # type: ignore
-    if field_value:
-        str_value = str(field_value)
-        if len(str_value) > max_length:
-            standard_logging_object[field_name] = _truncate_text(  # type: ignore
-                text=str_value, max_length=max_length
-            )
 
 
 def get_standard_logging_metadata(

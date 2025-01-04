@@ -1,19 +1,11 @@
 model_list:
-  - model_name: "*"
+  - model_name: "fake-openai-endpoint"
     litellm_params:
-      model: "openai/*"
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: "openai/*"
-    litellm_params:
-      model: "openai/*"
-      api_key: os.environ/OPENAI_API_KEY
-litellm_settings:
-  callbacks: ["datadog"]
+      model: aiohttp_openai/any
+      api_base: https://example-openai-endpoint.onrender.com/chat/completions
+      api_key: "ishaan"
 
-
-# For /fine_tuning/jobs endpoints
-finetune_settings:
-  - custom_llm_provider: "vertex_ai"
-    vertex_project: "adroit-crow-413218"
-    vertex_location: "us-central1"
-    vertex_credentials: "/Users/ishaanjaffer/Downloads/adroit-crow-413218-a956eef1a2a8.json"
+general_settings: 
+  master_key: sk-1234 
+  alerting: ["slack"]
+  alerting_threshold: 0.0000001
