@@ -2,7 +2,7 @@
 import warnings
 
 warnings.filterwarnings("ignore", message=".*conflict with protected namespace.*")
-### INIT VARIABLES ###
+### INIT VARIABLES ####
 import threading
 import os
 from typing import Callable, List, Optional, Dict, Union, Any, Literal, get_args
@@ -609,7 +609,7 @@ openai_compatible_endpoints: List = [
     "api.deepseek.com/v1",
     "api.together.xyz/v1",
     "app.empower.dev/api/v1",
-    "inference.friendli.ai/v1",
+    "https://api.friendli.ai/serverless/v1",
     "api.sambanova.ai/v1",
     "api.x.ai/v1",
     "api.galadriel.ai/v1",
