@@ -1,5 +1,5 @@
 # this workflow is triggered by an API call when there is a new PyPI release of LiteLLM
-name: Build and Publish Docker Image
+name: Build and Publish Docker Images
 on:
   push:
     branches:
@@ -35,7 +35,8 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      # Build and push main Dockerfile
+      - name: Build and push main image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -43,3 +44,12 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/litellm:${{ github.event.inputs.tag || 'latest' }}
           platforms: linux/amd64,linux/arm64
 
+      # Build and push database Dockerfile
+      - name: Build and push database image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.database
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/litellm-database:${{ github.event.inputs.tag || 'latest' }}
+          platforms: linux/amd64,linux/arm64
