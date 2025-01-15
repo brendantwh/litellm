@@ -2704,6 +2704,24 @@ def test_select_model_name_for_cost_calc():
     assert return_model == "azure_ai/mistral-large"
 
 
+def test_moderations():
+    from litellm import moderation
+
+    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+    litellm.add_known_models()
+
+    assert "omni-moderation-latest" in litellm.model_cost
+    print(
+        f"litellm.model_cost['omni-moderation-latest']: {litellm.model_cost['omni-moderation-latest']}"
+    )
+    assert "omni-moderation-latest" in litellm.open_ai_chat_completion_models
+
+    response = moderation("I am a bad person", model="omni-moderation-latest")
+    cost = completion_cost(response, model="omni-moderation-latest")
+    assert cost == 0
+
+
 def test_cost_calculator_azure_embedding():
     from litellm.cost_calculator import response_cost_calculator
     from litellm.types.utils import EmbeddingResponse, Usage
@@ -2729,3 +2747,10 @@ def test_cost_calculator_azure_embedding():
     except Exception as e:
         traceback.print_exc()
         pytest.fail(f"Error: {e}")
+
+
+def test_add_known_models():
+    litellm.add_known_models()
+    assert (
+        "bedrock/us-west-1/meta.llama3-70b-instruct-v1:0" not in litellm.bedrock_models
+    )
