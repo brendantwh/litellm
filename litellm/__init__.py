@@ -105,6 +105,7 @@ turn_off_message_logging: Optional[bool] = False
 log_raw_request_response: bool = False
 redact_messages_in_exceptions: Optional[bool] = False
 redact_user_api_key_info: Optional[bool] = False
+filter_invalid_headers: Optional[bool] = False
 add_user_information_to_llm_headers: Optional[bool] = (
     None  # adds user_id, team_id, token hash (params from StandardLoggingMetadata) to request headers
 )
@@ -1056,6 +1057,7 @@ ALL_LITELLM_RESPONSE_TYPES = [
 ]
 
 from .llms.custom_llm import CustomLLM
+from .llms.bedrock.chat.converse_transformation import AmazonConverseConfig
 from .llms.openai_like.chat.handler import OpenAILikeChatConfig
 from .llms.aiohttp_openai.chat.transformation import AiohttpOpenAIChatConfig
 from .llms.galadriel.chat.transformation import GaladrielChatConfig
@@ -1130,7 +1132,7 @@ from .llms.bedrock.chat.invoke_handler import (
     AmazonCohereChatConfig,
     bedrock_tool_name_mappings,
 )
-from .llms.bedrock.chat.converse_transformation import AmazonConverseConfig
+
 from .llms.bedrock.common_utils import (
     AmazonTitanConfig,
     AmazonAI21Config,

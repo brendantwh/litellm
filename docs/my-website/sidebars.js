@@ -379,6 +379,7 @@ const sidebars = {
       type: "category",
       label: "Logging & Observability",
       items: [
+        "observability/lunary_integration",
         "observability/mlflow",
         "observability/langfuse_integration",
         "observability/gcs_bucket_integration",
@@ -402,7 +403,6 @@ const sidebars = {
         "observability/wandb_integration",
         "observability/slack_integration",
         "observability/athina_integration",
-        "observability/lunary_integration",
         "observability/greenscale_integration",
         "observability/supabase_integration",
         `observability/telemetry`,
@@ -416,6 +416,7 @@ const sidebars = {
       items: [
         "extras/contributing",
         "data_security",
+        "data_retention",
         "migration_policy",
         "contributing",
         "proxy/pii_masking",

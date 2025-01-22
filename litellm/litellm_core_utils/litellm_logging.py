@@ -2998,6 +2998,7 @@ class StandardLoggingPayloadSetup:
             api_base=None,
             response_cost=None,
             additional_headers=None,
+            litellm_overhead_time_ms=None,
         )
         if hidden_params is not None:
             for key in StandardLoggingHiddenParams.__annotations__.keys():
@@ -3069,8 +3070,7 @@ def get_standard_logging_object_payload(
     original_exception: Optional[Exception] = None,
 ) -> Optional[StandardLoggingPayload]:
     try:
-        if kwargs is None:
-            kwargs = {}
+        kwargs = kwargs or {}
 
         hidden_params: Optional[dict] = None
         if init_response_obj is None:
@@ -3095,13 +3095,14 @@ def get_standard_logging_object_payload(
                         cache_key=None,
                         api_base=None,
                         response_cost=None,
+                        litellm_overhead_time_ms=None,
                     )
                 )
 
         # standardize this function to be used across, s3, dynamoDB, langfuse logging
         litellm_params = kwargs.get("litellm_params", {})
         proxy_server_request = litellm_params.get("proxy_server_request") or {}
-        end_user_id = proxy_server_request.get("body", {}).get("user", None)
+
         metadata: dict = (
             litellm_params.get("litellm_metadata")
             or litellm_params.get("metadata", None)
@@ -3148,6 +3149,11 @@ def get_standard_logging_object_payload(
             litellm_params=litellm_params,
             prompt_integration=kwargs.get("prompt_integration", None),
         )
+
+        _request_body = proxy_server_request.get("body", {})
+        end_user_id = clean_metadata["user_api_key_end_user_id"] or _request_body.get(
+            "user", None
+        )  # maintain backwards compatibility with old request body check
 
         saved_cache_cost: float = 0.0
         if cache_hit is True:
@@ -3234,12 +3240,18 @@ def get_standard_logging_object_payload(
             ),
         )
 
+        emit_standard_logging_payload(payload)
         return payload
     except Exception as e:
         verbose_logger.exception(
             "Error creating standard logging object - {}".format(str(e))
         )
         return None
+
+
+def emit_standard_logging_payload(payload: StandardLoggingPayload):
+    if os.getenv("LITELLM_PRINT_STANDARD_LOGGING_PAYLOAD"):
+        verbose_logger.info(json.dumps(payload, indent=4))
 
 
 def get_standard_logging_metadata(

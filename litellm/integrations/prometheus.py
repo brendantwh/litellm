@@ -149,6 +149,20 @@ class PrometheusLogger(CustomLogger):
                 labelnames=["hashed_api_key", "api_key_alias"],
             )
 
+            # Max Budget for Team
+            self.litellm_team_max_budget_metric = Gauge(
+                "litellm_team_max_budget_metric",
+                "Maximum budget set for team",
+                labelnames=["team_id", "team_alias"],
+            )
+
+            # Max Budget for API Key
+            self.litellm_api_key_max_budget_metric = Gauge(
+                "litellm_api_key_max_budget_metric",
+                "Maximum budget set for api key",
+                labelnames=["hashed_api_key", "api_key_alias"],
+            )
+
             ########################################
             # LiteLLM Virtual API KEY metrics
             ########################################
@@ -195,6 +209,20 @@ class PrometheusLogger(CustomLogger):
                     "hashed_api_key",
                     "api_key_alias",
                 ],
+            )
+
+            self.litellm_overhead_latency_metric = Histogram(
+                "litellm_overhead_latency_metric",
+                "Latency overhead (milliseconds) added by LiteLLM processing",
+                labelnames=[
+                    "model_group",
+                    "api_provider",
+                    "api_base",
+                    "litellm_model_name",
+                    "hashed_api_key",
+                    "api_key_alias",
+                ],
+                buckets=LATENCY_BUCKETS,
             )
             # llm api provider budget metrics
             self.litellm_provider_remaining_budget_metric = Gauge(
@@ -311,7 +339,6 @@ class PrometheusLogger(CustomLogger):
                     label_name="litellm_requests_metric"
                 ),
             )
-
             self._initialize_prometheus_startup_metrics()
 
         except Exception as e:
@@ -557,9 +584,21 @@ class PrometheusLogger(CustomLogger):
             user_api_team, user_api_team_alias
         ).set(_remaining_team_budget)
 
+        # Max Budget Metrics
+        if _team_max_budget is not None:
+            self.litellm_team_max_budget_metric.labels(
+                user_api_team, user_api_team_alias
+            ).set(_team_max_budget)
+
         self.litellm_remaining_api_key_budget_metric.labels(
             user_api_key, user_api_key_alias
         ).set(_remaining_api_key_budget)
+
+        # Max Budget Metrics for API Key
+        if _api_key_max_budget is not None:
+            self.litellm_api_key_max_budget_metric.labels(
+                user_api_key, user_api_key_alias
+            ).set(_api_key_max_budget)
 
     def _increment_top_level_request_and_spend_metrics(
         self,
@@ -961,6 +1000,20 @@ class PrometheusLogger(CustomLogger):
                 remaining_tokens = additional_headers.get(
                     "x_ratelimit_remaining_tokens", None
                 )
+
+            if litellm_overhead_time_ms := standard_logging_payload[
+                "hidden_params"
+            ].get("litellm_overhead_time_ms"):
+                self.litellm_overhead_latency_metric.labels(
+                    model_group,
+                    llm_provider,
+                    api_base,
+                    litellm_model_name,
+                    standard_logging_payload["metadata"]["user_api_key_hash"],
+                    standard_logging_payload["metadata"]["user_api_key_alias"],
+                ).observe(
+                    litellm_overhead_time_ms / 1000
+                )  # set as seconds
 
             if remaining_requests:
                 """

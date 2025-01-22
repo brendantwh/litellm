@@ -177,6 +177,7 @@ class Router:
             int
         ] = None,  # max fallbacks to try before exiting the call. Defaults to 5.
         timeout: Optional[float] = None,
+        stream_timeout: Optional[float] = None,
         default_litellm_params: Optional[
             dict
         ] = None,  # default params for Router.chat.completion.create
@@ -402,6 +403,7 @@ class Router:
             self.max_fallbacks = litellm.ROUTER_MAX_FALLBACKS
 
         self.timeout = timeout or litellm.request_timeout
+        self.stream_timeout = stream_timeout
 
         self.retry_after = retry_after
         self.routing_strategy = routing_strategy
@@ -810,6 +812,7 @@ class Router:
             kwargs["messages"] = messages
             kwargs["stream"] = stream
             kwargs["original_function"] = self._acompletion
+
             self._update_kwargs_before_fallbacks(model=model, kwargs=kwargs)
             request_priority = kwargs.get("priority") or self.default_priority
             start_time = time.time()
@@ -891,8 +894,8 @@ class Router:
                 deployment=deployment, parent_otel_span=parent_otel_span
             )
             self._update_kwargs_with_deployment(deployment=deployment, kwargs=kwargs)
-
             data = deployment["litellm_params"].copy()
+
             model_name = data["model"]
 
             model_client = self._get_async_openai_model_client(
@@ -1044,8 +1047,23 @@ class Router:
 
         return model_client
 
-    def _get_timeout(self, kwargs: dict, data: dict) -> Optional[Union[float, int]]:
-        """Helper to get timeout from kwargs or deployment params"""
+    def _get_stream_timeout(
+        self, kwargs: dict, data: dict
+    ) -> Optional[Union[float, int]]:
+        """Helper to get stream timeout from kwargs or deployment params"""
+        return (
+            kwargs.get("stream_timeout", None)  # the params dynamically set by user
+            or data.get(
+                "stream_timeout", None
+            )  # timeout set on litellm_params for this deployment
+            or self.stream_timeout  # timeout set on router
+            or self.default_litellm_params.get("stream_timeout", None)
+        )
+
+    def _get_non_stream_timeout(
+        self, kwargs: dict, data: dict
+    ) -> Optional[Union[float, int]]:
+        """Helper to get non-stream timeout from kwargs or deployment params"""
         timeout = (
             kwargs.get("timeout", None)  # the params dynamically set by user
             or kwargs.get("request_timeout", None)  # the params dynamically set by user
@@ -1058,7 +1076,17 @@ class Router:
             or self.timeout  # timeout set on router
             or self.default_litellm_params.get("timeout", None)
         )
+        return timeout
 
+    def _get_timeout(self, kwargs: dict, data: dict) -> Optional[Union[float, int]]:
+        """Helper to get timeout from kwargs or deployment params"""
+        timeout: Optional[Union[float, int]] = None
+        if kwargs.get("stream", False):
+            timeout = self._get_stream_timeout(kwargs=kwargs, data=data)
+        if timeout is None:
+            timeout = self._get_non_stream_timeout(
+                kwargs=kwargs, data=data
+            )  # default to this if no stream specific timeout set
         return timeout
 
     async def abatch_completion(
@@ -2790,9 +2818,12 @@ class Router:
                 content_policy_fallbacks=content_policy_fallbacks,
             )
 
-            response = await self.async_function_with_retries(
-                *args, **kwargs, mock_timeout=mock_timeout
-            )
+            if mock_timeout is not None:
+                response = await self.async_function_with_retries(
+                    *args, **kwargs, mock_timeout=mock_timeout
+                )
+            else:
+                response = await self.async_function_with_retries(*args, **kwargs)
             verbose_router_logger.debug(f"Async Response: {response}")
             return response
         except Exception as e:
@@ -3069,6 +3100,7 @@ class Router:
                 deployment_num_retries, int
             ):
                 num_retries = deployment_num_retries
+
             """
             Retry Logic
             """
@@ -3115,6 +3147,7 @@ class Router:
             )
 
             await asyncio.sleep(retry_after)
+
             for current_attempt in range(num_retries):
                 try:
                     # if the function call is successful, no exception will be raised and we'll break out of the loop
@@ -3616,66 +3649,6 @@ class Router:
             )  # don't change existing ttl
 
         return request_count
-
-    def _is_cooldown_required(
-        self,
-        model_id: str,
-        exception_status: Union[str, int],
-        exception_str: Optional[str] = None,
-    ) -> bool:
-        """
-        A function to determine if a cooldown is required based on the exception status.
-
-        Parameters:
-            model_id (str) The id of the model in the model list
-            exception_status (Union[str, int]): The status of the exception.
-
-        Returns:
-            bool: True if a cooldown is required, False otherwise.
-        """
-        ## BASE CASE - single deployment
-        model_group = self.get_model_group(id=model_id)
-        if model_group is not None and len(model_group) == 1:
-            return False
-
-        try:
-            ignored_strings = ["APIConnectionError"]
-            if (
-                exception_str is not None
-            ):  # don't cooldown on litellm api connection errors errors
-                for ignored_string in ignored_strings:
-                    if ignored_string in exception_str:
-                        return False
-
-            if isinstance(exception_status, str):
-                exception_status = int(exception_status)
-
-            if exception_status >= 400 and exception_status < 500:
-                if exception_status == 429:
-                    # Cool down 429 Rate Limit Errors
-                    return True
-
-                elif exception_status == 401:
-                    # Cool down 401 Auth Errors
-                    return True
-
-                elif exception_status == 408:
-                    return True
-
-                elif exception_status == 404:
-                    return True
-
-                else:
-                    # Do NOT cool down all other 4XX Errors
-                    return False
-
-            else:
-                # should cool down for all other errors
-                return True
-
-        except Exception:
-            # Catch all - if any exceptions default to cooling down
-            return True
 
     def _has_default_fallbacks(self) -> bool:
         if self.fallbacks is None:

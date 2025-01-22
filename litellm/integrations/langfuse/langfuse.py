@@ -4,7 +4,7 @@ import copy
 import os
 import traceback
 from collections.abc import MutableMapping, MutableSequence, MutableSet
-from typing import TYPE_CHECKING, Any, Dict, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from packaging.version import Version
 from pydantic import BaseModel
@@ -457,11 +457,14 @@ class LangFuseLogger:
             supports_costs = langfuse_version >= Version("2.7.3")
             supports_completion_start_time = langfuse_version >= Version("2.7.3")
 
-            tags = metadata.pop("tags", []) if supports_tags else []
-
             standard_logging_object: Optional[StandardLoggingPayload] = cast(
                 Optional[StandardLoggingPayload],
                 kwargs.get("standard_logging_object", None),
+            )
+            tags = (
+                self._get_langfuse_tags(standard_logging_object=standard_logging_object)
+                if supports_tags
+                else []
             )
 
             if standard_logging_object is None:
@@ -731,6 +734,14 @@ class LangFuseLogger:
         except Exception:
             verbose_logger.error(f"Langfuse Layer Error - {traceback.format_exc()}")
             return None, None
+
+    @staticmethod
+    def _get_langfuse_tags(
+        standard_logging_object: Optional[StandardLoggingPayload],
+    ) -> List[str]:
+        if standard_logging_object is None:
+            return []
+        return standard_logging_object.get("request_tags", []) or []
 
     def add_default_langfuse_tags(self, tags, kwargs, metadata):
         """
