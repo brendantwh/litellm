@@ -16,6 +16,9 @@ import {
   AccordionHeader,
   AccordionBody,
 } from "@tremor/react";
+import ConditionalPublicModelName from "./add_model/conditional_public_model_name";
+import LiteLLMModelNameField from "./add_model/litellm_model_name";
+import AdvancedSettings from "./add_model/advanced_settings";
 import {
   TabPanel,
   TabPanels,
@@ -156,14 +159,10 @@ export const handleSubmit = async (
 ) => {
   try {
     // If model_name is not provided, use provider.toLowerCase() + "/*"
-    if (!formValues["model_name"]) {
+    if (formValues["model"] && formValues["model"].includes("all-wildcard")) {
       formValues["model_name"] = formValues["custom_llm_provider"].toLowerCase() + "/*";
     }
-
-    // If model is not provided, use provider.toLowerCase() + "/*"
-    if (!formValues["model"]) {
       formValues["model"] = [formValues["custom_llm_provider"].toLowerCase() + "/*"];
-    }
 
     /**
      * For multiple litellm model names - create a separate deployment for each
@@ -284,7 +283,7 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
   const [form] = Form.useForm();
   const [modelMap, setModelMap] = useState<any>(null);
   const [lastRefreshed, setLastRefreshed] = useState("");
-
+  
   const [providerModels, setProviderModels] = useState<Array<string>>([]); // Explicitly typing providerModels as a string array
 
   const providers = Object.values(Providers).filter((key) =>
@@ -1045,13 +1044,8 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
 
   const setProviderModelsFn = (provider: string) => {
     console.log(`received provider string: ${provider}`);
-    const providerKey = Object.keys(Providers).find(
-      (key) => (Providers as { [index: string]: any })[key] === provider
-    );
-
+    let providerKey = provider;
     if (providerKey) {
-      const mappingResult = provider_map[providerKey]; // Get the corresponding value from the mapping
-      console.log(`mappingResult: ${mappingResult}`);
       let _providerModels: Array<string> = [];
       if (typeof modelMap === "object") {
         Object.entries(modelMap).forEach(([key, value]) => {
@@ -1059,8 +1053,8 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
             value !== null &&
             typeof value === "object" &&
             "litellm_provider" in (value as object) &&
-            ((value as any)["litellm_provider"] === mappingResult ||
-              (value as any)["litellm_provider"].includes(mappingResult))
+            ((value as any)["litellm_provider"] === providerKey ||
+              (value as any)["litellm_provider"].includes(providerKey))
           ) {
             _providerModels.push(key);
           }
@@ -1775,7 +1769,7 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
                 labelAlign="left"
               >
                 <>
-                      
+                  {/* Provider Selection */}
                   <Form.Item
                     rules={[{ required: true, message: "Required" }]}
                     label="Provider:"
@@ -1784,20 +1778,32 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
                     labelCol={{ span: 10 }}
                     labelAlign="left"
                   >
-                    <Select value={selectedProvider.toString()}>
-                      {providers.map((provider, index) => (
+                    <Select
+                      value={selectedProvider as string}
+                      onChange={(value) => {
+                        // Set the selected provider
+                        setSelectedProvider(value as unknown as string);
+                        // Update provider-specific models
+                        setProviderModelsFn(provider_map[value as unknown as string]);
+                        // Reset the 'model' field
+                        form.setFieldsValue({ model: [] });
+                        // Reset the 'model_name' field
+                        form.setFieldsValue({ model_name: undefined });
+                      }}
+                    >
+                      {Object.keys(Providers).map((providerKey) => (
                         <SelectItem
-                          key={index}
-                          value={provider}
+                          key={providerKey}
+                          value={Providers[providerKey as keyof typeof Providers]}
                           onClick={() => {
-                            setProviderModelsFn(provider);
-                            setSelectedProvider(provider);
+                            setProviderModelsFn(provider_map[providerKey as keyof typeof Providers]);
+                            setSelectedProvider(Providers[providerKey as keyof typeof Providers]);
                           }}
                         >
                           <div className="flex items-center space-x-2">
                             <img
-                              src={providerLogoMap[provider]}
-                              alt={`${provider} logo`}
+                              src={providerLogoMap[Providers[providerKey as keyof typeof Providers]]}
+                              alt={`${Providers[providerKey as keyof typeof Providers]} logo`}
                               className="w-5 h-5"
                               onError={(e) => {
                                 // Create a div with provider initial as fallback
@@ -1806,24 +1812,35 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
                                 if (parent) {
                                   const fallbackDiv = document.createElement('div');
                                   fallbackDiv.className = 'w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-xs';
-                                  fallbackDiv.textContent = provider.charAt(0);
+                                  fallbackDiv.textContent = Providers[providerKey as keyof typeof Providers].charAt(0);
                                   parent.replaceChild(fallbackDiv, target);
                                 }
                               }}
                             />
-                            <span>{provider}</span>
+                            <span>{Providers[providerKey as keyof typeof Providers]}</span>
                           </div>
                         </SelectItem>
                       ))}
                     </Select>
                   </Form.Item>
+                  <LiteLLMModelNameField
+                      selectedProvider={selectedProvider as string}
+                      providerModels={providerModels}
+                      getPlaceholder={getPlaceholder}
+                    />
+                  
+                  {/* Conditionally Render "Public Model Name" */}
+                  <ConditionalPublicModelName  />
+
+                  {/* Provider-specific fields */}
                   {dynamicProviderForm !== undefined &&
                     dynamicProviderForm.fields.length > 0 && (
                       <DynamicFields
                         fields={dynamicProviderForm.fields}
                         selectedProvider={dynamicProviderForm.name}
                       />
-                    )}
+                  )}
+
                   {selectedProvider != Providers.Bedrock &&
                     selectedProvider != Providers.Vertex_AI &&
                     selectedProvider != Providers.Ollama &&
@@ -1962,165 +1979,21 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
                     </Form.Item>
                   )}
 
-                  <Card 
-                    className="mb-4"
-                    onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="flex justify-between items-center">
-                      <Text>Advanced Settings</Text>
-                      <Icon 
-                        icon={showAdvancedSettings ? ChevronUpIcon : ChevronDownIcon} 
-                        size="sm"
-                      />
-                    </div>
+                  <AdvancedSettings 
+                    showAdvancedSettings={showAdvancedSettings}
+                    setShowAdvancedSettings={setShowAdvancedSettings}
+                  />
+                  
 
-
-                  {showAdvancedSettings && (
-                    <>
-                      <Form.Item
-                        label="Public Model Name"
-                        name="model_name"
-                        tooltip="Model name your users will pass in. Also used for load-balancing, LiteLLM will load balance between all models with this public name."
-                        className="mb-0"
-                        rules={[{ required: false }]}
-                      >
-                        <TextInput />
-                      </Form.Item>
-                      <Row>
-                        <Col span={10}></Col>
-                        <Col span={10}>
-                          <Text className="mb-3 mt-1">
-                            Model name your users will pass in.
-                          </Text>
-                        </Col>
-                      </Row>
-                      
-
-                      <Form.Item
-                        label="LiteLLM Model Name(s)"
-                        tooltip="Actual model name used for making litellm.completion() / litellm.embedding() call."
-                        className="mb-0"
-                      >
-                        <Form.Item
-                          name="model"
-                          rules={[{ required: false }]}
-                          noStyle
-                        >
-                          {(selectedProvider === Providers.Azure) || (selectedProvider === Providers.OpenAI_Compatible) || (selectedProvider === Providers.Ollama) ? (
-                            <TextInput placeholder={getPlaceholder(selectedProvider.toString())} />
-                          ) : providerModels.length > 0 ? (
-                            <MultiSelect>
-                              <MultiSelectItem value="custom">Custom Model Name (Enter below)</MultiSelectItem>
-                              {providerModels.map((model, index) => (
-                                <MultiSelectItem key={index} value={model}>
-                                  {model}
-                                </MultiSelectItem>
-                              ))}
-                            </MultiSelect>
-                          ) : (
-                            <TextInput placeholder={getPlaceholder(selectedProvider.toString())} />
-                          )}
-                        
-                        </Form.Item>
-
-                        <Form.Item
-                          noStyle
-                          shouldUpdate={(prevValues, currentValues) => prevValues.model !== currentValues.model}
-                        >
-                          {({ getFieldValue }) => {
-                            const selectedModels = getFieldValue('model') || [];
-                            return selectedModels.includes('custom') && (
-                              <Form.Item
-                                name="custom_model_name"
-                                rules={[{ required: true, message: "Please enter a custom model name" }]}
-                                className="mt-2"
-                              >
-                                <TextInput placeholder="Enter custom model name" />
-                              </Form.Item>
-                            )
-                          }}
-                        </Form.Item>
-                        
-                      </Form.Item>
-                      <Row>
-                    <Col span={10}></Col>
-                    <Col span={10}>
-                      <Text className="mb-3 mt-1">
-                        Actual model name used for making{" "}
-                        <Link
-                          href="https://docs.litellm.ai/docs/providers"
-                          target="_blank"
-                        >
-                          litellm.completion() call
-                        </Link>
-                        . We&apos;ll{" "}
-                        <Link
-                          href="https://docs.litellm.ai/docs/proxy/reliability#step-1---set-deployments-on-config"
-                          target="_blank"
-                        >
-                          loadbalance
-                        </Link>{" "}
-                        models with the same &apos;public name&apos;
-                      </Text>
-                    </Col>
-                  </Row>
-                      <Form.Item
-                    label="LiteLLM Params"
-                    name="litellm_extra_params"
-                    tooltip="Optional litellm params used for making a litellm.completion() call."
-                    className="mb-0"
-                  >
-                    <TextArea
-                      rows={4}
-                      placeholder='{
-                    "rpm": 100,
-                    "timeout": 0,
-                    "stream_timeout": 0
-                  }'
-                    />
-                  </Form.Item>
-                  <Row>
-                    <Col span={10}></Col>
-                    <Col span={10}>
-                      <Text className="mb-3 mt-1">
-                        Pass JSON of litellm supported params{" "}
-                        <Link
-                          href="https://docs.litellm.ai/docs/completion/input"
-                          target="_blank"
-                        >
-                          litellm.completion() call
-                        </Link>
-                      </Text>
-                    </Col>
-                  </Row>
-                  <Form.Item
-                    label="Model Info"
-                    name="model_info_params"
-                    tooltip="Optional model info params. Returned when calling `/model/info` endpoint."
-                    className="mb-0"
-                  >
-                    <TextArea
-                      rows={4}
-                      placeholder='{
-                    "mode": "chat"
-                  }'
-                    />
-                  </Form.Item>
-                    </>
-                  )}
-                </Card>
-                 
+                  <div className="flex justify-between items-center mb-4">
+                    <Tooltip title="Get help on our github">
+                      <Typography.Link href="https://github.com/BerriAI/litellm/issues">
+                        Need Help?
+                      </Typography.Link>
+                    </Tooltip>
+                    <Button2 htmlType="submit">Add Model</Button2>
+                  </div>
                 </>
-        
-                <div className="flex justify-between items-center mb-4">
-                  <Tooltip title="Get help on our github">
-                    <Typography.Link href="https://github.com/BerriAI/litellm/issues">
-                      Need Help?
-                    </Typography.Link>
-                  </Tooltip>
-                  <Button2 htmlType="submit">Add Model</Button2>
-                </div>
               </Form>
             </Card>
           </TabPanel>
