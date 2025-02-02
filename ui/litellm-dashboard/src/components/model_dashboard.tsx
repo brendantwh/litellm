@@ -19,6 +19,8 @@ import {
 import ConditionalPublicModelName from "./add_model/conditional_public_model_name";
 import LiteLLMModelNameField from "./add_model/litellm_model_name";
 import AdvancedSettings from "./add_model/advanced_settings";
+import { handleAddModelSubmit } from "./add_model/handle_add_model_submit";
+import EditModelModal from "./edit_model/edit_model_modal";
 import {
   TabPanel,
   TabPanels,
@@ -150,123 +152,6 @@ const retry_policy_map: Record<string, string> = {
   "RateLimitError (429)": "RateLimitErrorRetries",
   "ContentPolicyViolationError (400)": "ContentPolicyViolationErrorRetries",
   "InternalServerError (500)": "InternalServerErrorRetries",
-};
-
-export const handleSubmit = async (
-  formValues: Record<string, any>,
-  accessToken: string,
-  form: any
-) => {
-  try {
-    // If model_name is not provided, use provider.toLowerCase() + "/*"
-    if (formValues["model"] && formValues["model"].includes("all-wildcard")) {
-      formValues["model_name"] = formValues["custom_llm_provider"].toLowerCase() + "/*";
-    }
-      formValues["model"] = [formValues["custom_llm_provider"].toLowerCase() + "/*"];
-
-    /**
-     * For multiple litellm model names - create a separate deployment for each
-     * - get the list
-     * - iterate through it
-     * - create a new deployment for each
-     *
-     * For single model name -> make it a 1 item list
-     */
-
-    // get the list of deployments
-    let deployments: Array<string> = Array.isArray(formValues["model"])
-      ? formValues["model"]
-      : [formValues["model"]];
-    console.log(`received deployments: ${deployments}`);
-    console.log(`received type of deployments: ${typeof deployments}`);
-    deployments.forEach(async (litellm_model) => {
-      console.log(`litellm_model: ${litellm_model}`);
-      const litellmParamsObj: Record<string, any> = {};
-      const modelInfoObj: Record<string, any> = {};
-      // Iterate through the key-value pairs in formValues
-      litellmParamsObj["model"] = litellm_model;
-      let modelName: string = "";
-      console.log("formValues add deployment:", formValues);
-      for (const [key, value] of Object.entries(formValues)) {
-        if (value === "") {
-          continue;
-        }
-        if (key == "model_name") {
-          modelName = modelName + value;
-        } else if (key == "custom_llm_provider") {
-          console.log("custom_llm_provider:", value);
-          const mappingResult = provider_map[value]; // Get the corresponding value from the mapping
-          litellmParamsObj["custom_llm_provider"] = mappingResult;
-          console.log("custom_llm_provider mappingResult:", mappingResult);
-        } else if (key == "model") {
-          continue;
-        }
-
-        // Check if key is "base_model"
-        else if (key === "base_model") {
-          // Add key-value pair to model_info dictionary
-          modelInfoObj[key] = value;
-        }
-        else if (key === "custom_model_name") {
-          litellmParamsObj["model"] = value;
-        } else if (key == "litellm_extra_params") {
-          console.log("litellm_extra_params:", value);
-          let litellmExtraParams = {};
-          if (value && value != undefined) {
-            try {
-              litellmExtraParams = JSON.parse(value);
-            } catch (error) {
-              message.error(
-                "Failed to parse LiteLLM Extra Params: " + error,
-                10
-              );
-              throw new Error("Failed to parse litellm_extra_params: " + error);
-            }
-            for (const [key, value] of Object.entries(litellmExtraParams)) {
-              litellmParamsObj[key] = value;
-            }
-          }
-        } else if (key == "model_info_params") {
-          console.log("model_info_params:", value);
-          let modelInfoParams = {};
-          if (value && value != undefined) {
-            try {
-              modelInfoParams = JSON.parse(value);
-            } catch (error) {
-              message.error(
-                "Failed to parse LiteLLM Extra Params: " + error,
-                10
-              );
-              throw new Error("Failed to parse litellm_extra_params: " + error);
-            }
-            for (const [key, value] of Object.entries(modelInfoParams)) {
-              modelInfoObj[key] = value;
-            }
-          }
-        }
-
-        // Check if key is any of the specified API related keys
-        else {
-          // Add key-value pair to litellm_params dictionary
-          litellmParamsObj[key] = value;
-        }
-      }
-
-      const new_model: Model = {
-        model_name: modelName,
-        litellm_params: litellmParamsObj,
-        model_info: modelInfoObj,
-      };
-
-      const response: any = await modelCreateCall(accessToken, new_model);
-
-      console.log(`response for model create call: ${response["data"]}`);
-    });
-
-    form.resetFields();
-  } catch (error) {
-    message.error("Failed to create model: " + error, 10);
-  }
 };
 
 const ModelDashboard: React.FC<ModelDashboardProps> = ({
@@ -483,134 +368,6 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
     return null;
   }
 
-  const EditModelModal: React.FC<EditModelModalProps> = ({
-    visible,
-    onCancel,
-    model,
-    onSubmit,
-  }) => {
-    const [form] = Form.useForm();
-    let litellm_params_to_edit: Record<string, any> = {};
-    let model_name = "";
-    let model_id = "";
-    if (model) {
-      litellm_params_to_edit = model.litellm_params;
-      model_name = model.model_name;
-      let model_info = model.model_info;
-      if (model_info) {
-        model_id = model_info.id;
-        console.log(`model_id: ${model_id}`);
-        litellm_params_to_edit.model_id = model_id;
-      }
-    }
-
-    const handleOk = () => {
-      form
-        .validateFields()
-        .then((values) => {
-          onSubmit(values);
-          form.resetFields();
-        })
-        .catch((error) => {
-          console.error("Validation failed:", error);
-        });
-    };
-
-    return (
-      <Modal
-        title={"Edit Model " + model_name}
-        visible={visible}
-        width={800}
-        footer={null}
-        onOk={handleOk}
-        onCancel={onCancel}
-      >
-        <Form
-          form={form}
-          onFinish={handleEditSubmit}
-          initialValues={litellm_params_to_edit} // Pass initial values here
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          labelAlign="left"
-        >
-          <>
-            <Form.Item className="mt-8" label="api_base" name="api_base">
-              <TextInput />
-            </Form.Item>
-            <Form.Item
-              label="organization"
-              name="organization"
-              tooltip="OpenAI Organization ID"
-            >
-                <TextInput />
-            </Form.Item>
-
-            <Form.Item
-              label="tpm"
-              name="tpm"
-              tooltip="int (optional) - Tokens limit for this deployment: in tokens per minute (tpm). Find this information on your model/providers website"
-            >
-              <InputNumber min={0} step={1} />
-            </Form.Item>
-
-            <Form.Item
-              label="rpm"
-              name="rpm"
-              tooltip="int (optional) - Rate limit for this deployment: in requests per minute (rpm). Find this information on your model/providers website"
-            >
-              <InputNumber min={0} step={1} />
-            </Form.Item>
-
-            <Form.Item label="max_retries" name="max_retries">
-              <InputNumber min={0} step={1} />
-            </Form.Item>
-
-            <Form.Item
-              label="timeout"
-              name="timeout"
-              tooltip="int (optional) - Timeout in seconds for LLM requests (Defaults to 600 seconds)"
-            >
-              <InputNumber min={0} step={1} />
-            </Form.Item>
-
-            <Form.Item
-              label="stream_timeout"
-              name="stream_timeout"
-              tooltip="int (optional) - Timeout for stream requests (seconds)"
-            >
-              <InputNumber min={0} step={1} />
-            </Form.Item>
-
-            <Form.Item
-              label="Input Cost per 1M Tokens"
-              name="input_cost_per_million_tokens"
-              tooltip="float (optional) - Input cost per 1 million tokens"
-            >
-              <InputNumber min={0} step={0.01} />
-            </Form.Item>
-
-            <Form.Item
-              label="Output Cost per 1M Tokens"
-              name="output_cost_per_million_tokens"
-              tooltip="float (optional) - Output cost per 1 million tokens"
-            >
-              <InputNumber min={0} step={0.01} />
-            </Form.Item>
-
-            <Form.Item
-              label="model_id"
-              name="model_id"
-              hidden={true}
-            ></Form.Item>
-          </>
-          <div style={{ textAlign: "right", marginTop: "10px" }}>
-            <Button2 htmlType="submit">Save</Button2>
-          </div>
-        </Form>
-      </Modal>
-    );
-  };
-
   const handleEditClick = (model: any) => {
     setSelectedModel(model);
     setEditModalVisible(true);
@@ -642,14 +399,15 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
     let newLiteLLMParams: Record<string, any> = {};
     let model_info_model_id = null;
 
-    if (formValues.input_cost_per_million_tokens) {
-      formValues.input_cost_per_token = formValues.input_cost_per_million_tokens / 1000000;
-      delete formValues.input_cost_per_million_tokens;
+    if (formValues.input_cost_per_token) {
+      // Convert from per 1M tokens to per token
+      formValues.input_cost_per_token = Number(formValues.input_cost_per_token) / 1_000_000;
     }
-    if (formValues.output_cost_per_million_tokens) {
-      formValues.output_cost_per_token = formValues.output_cost_per_million_tokens / 1000000;
-      delete formValues.output_cost_per_million_tokens;
+    if (formValues.output_cost_per_token) {
+      // Convert from per 1M tokens to per token
+      formValues.output_cost_per_token = Number(formValues.output_cost_per_token) / 1_000_000;
     }
+  
 
     for (const [key, value] of Object.entries(formValues)) {
       if (key !== "model_id") {
@@ -1310,7 +1068,7 @@ const ModelDashboard: React.FC<ModelDashboardProps> = ({
     form
       .validateFields()
       .then((values) => {
-        handleSubmit(values, accessToken, form);
+        handleAddModelSubmit(values, accessToken, form);
         // form.resetFields();
       })
       .catch((error) => {
