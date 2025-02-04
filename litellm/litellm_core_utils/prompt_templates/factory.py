@@ -2175,7 +2175,7 @@ from litellm.types.llms.bedrock import ToolUseBlock as BedrockToolUseBlock
 
 def _parse_content_type(content_type: str) -> str:
     m = Message()
-    m['content-type'] = content_type
+    m["content-type"] = content_type
     return m.get_content_type()
 
 
@@ -2307,7 +2307,7 @@ class BedrockImageProcessor:
         """Synchronous image processing."""
         if "base64" in image_url:
             img_bytes, mime_type, image_format = cls._parse_base64_image(image_url)
-        elif "https:/" in image_url:
+        elif "http://" in image_url or "https://" in image_url:
             img_bytes, mime_type = BedrockImageProcessor.get_image_details(image_url)
             image_format = mime_type.split("/")[1]
         else:
