@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Typography } from "antd";
-import { teamDeleteCall, teamUpdateCall, teamInfoCall } from "./networking";
+import { teamDeleteCall, teamUpdateCall, teamInfoCall, Organization, DEFAULT_ORGANIZATION } from "./networking";
 import TeamMemberModal from "@/components/team/edit_membership";
+import { fetchTeams } from "./common_components/fetch_teams";
 import {
   InformationCircleIcon,
   PencilAltIcon,
@@ -64,6 +65,7 @@ interface TeamProps {
   setTeams: React.Dispatch<React.SetStateAction<Object[] | null>>;
   userID: string | null;
   userRole: string | null;
+  currentOrg: Organization | null;  
 }
 
 interface EditTeamModalProps {
@@ -90,26 +92,16 @@ const Team: React.FC<TeamProps> = ({
   setTeams,
   userID,
   userRole,
+  currentOrg
 }) => {
   const [lastRefreshed, setLastRefreshed] = useState("");
 
-  const fetchTeams = async (accessToken: string, userID: string | null, userRole: string | null) => {
-    let givenTeams;
-    if (userRole != "Admin" && userRole != "Admin Viewer") {
-      givenTeams = await teamListCall(accessToken, userID)
-    } else {
-      givenTeams = await teamListCall(accessToken)
-    }
-    
-    console.log(`givenTeams: ${givenTeams}`)
 
-    setTeams(givenTeams)
-  }
   useEffect(() => {
     console.log(`inside useeffect - ${teams}`)
     if (teams === null && accessToken) {
       // Call your function here
-      fetchTeams(accessToken, userID, userRole)
+      fetchTeams(accessToken, userID, userRole, currentOrg, setTeams)
     }
   }, [teams]);
   
@@ -117,7 +109,7 @@ const Team: React.FC<TeamProps> = ({
     console.log(`inside useeffect - ${lastRefreshed}`)
     if (accessToken) {
       // Call your function here
-      fetchTeams(accessToken, userID, userRole)
+      fetchTeams(accessToken, userID, userRole, currentOrg, setTeams)
     }
     handleRefreshClick()
   }, [lastRefreshed]);
@@ -132,6 +124,7 @@ const Team: React.FC<TeamProps> = ({
     null
   );
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [editTeam, setEditTeam] = useState<boolean>(false);
 
   const [isTeamModalVisible, setIsTeamModalVisible] = useState(false);
   const [isAddMemberModalVisible, setIsAddMemberModalVisible] = useState(false);
@@ -168,183 +161,6 @@ const Team: React.FC<TeamProps> = ({
     fetchGuardrails();
   }, [accessToken]);
 
-  const EditTeamModal: React.FC<EditTeamModalProps> = ({
-    visible,
-    onCancel,
-    team,
-    onSubmit,
-  }) => {
-    const [form] = Form.useForm();
-
-    // Extract existing guardrails from team metadata
-    let existingGuardrails: string[] = [];
-    try {
-      existingGuardrails = team.metadata?.guardrails || [];
-    } catch (error) {
-      console.error("Error extracting guardrails:", error);
-    }
-
-    const handleOk = () => {
-      form
-        .validateFields()
-        .then((values) => {
-          const updatedValues = { ...values, team_id: team.team_id };
-          onSubmit(updatedValues);
-          form.resetFields();
-        })
-        .catch((error) => {
-          console.error("Validation failed:", error);
-        });
-    };
-
-    return (
-      <Modal
-        title="Edit Team"
-        visible={visible}
-        width={800}
-        footer={null}
-        onOk={handleOk}
-        onCancel={onCancel}
-      >
-        <Form
-          form={form}
-          onFinish={handleEditSubmit}
-          initialValues={{
-            ...team,
-            guardrails: existingGuardrails
-          }}
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          labelAlign="left"
-        >
-          <>
-            <Form.Item
-              label="Team Name"
-              name="team_alias"
-              rules={[{ required: true, message: "Please input a team name" }]}
-            >
-              <TextInput />
-            </Form.Item>
-            <Form.Item label="Models" name="models">
-              <Select2
-                mode="multiple"
-                placeholder="Select models"
-                style={{ width: "100%" }}
-              >
-                <Select2.Option key="all-proxy-models" value="all-proxy-models">
-                  {"All Proxy Models"}
-                </Select2.Option>
-                {userModels &&
-                  userModels.map((model) => (
-                    <Select2.Option key={model} value={model}>
-                      {getModelDisplayName(model)}
-                    </Select2.Option>
-                  ))}
-              </Select2>
-            </Form.Item>
-            <Form.Item label="Max Budget (USD)" name="max_budget">
-              <InputNumber step={0.01} precision={2} width={200} />
-            </Form.Item>
-            <Form.Item
-              className="mt-8"
-              label="Reset Budget"
-              name="budget_duration"
-            >
-              <Select2 defaultValue={null} placeholder="n/a">
-                <Select2.Option value="24h">daily</Select2.Option>
-                <Select2.Option value="7d">weekly</Select2.Option>
-                <Select2.Option value="30d">monthly</Select2.Option>
-              </Select2>
-            </Form.Item>
-            <Form.Item label="Tokens per minute Limit (TPM)" name="tpm_limit">
-              <InputNumber step={1} width={400} />
-            </Form.Item>
-            <Form.Item label="Requests per minute Limit (RPM)" name="rpm_limit">
-              <InputNumber step={1} width={400} />
-            </Form.Item>
-            <Form.Item
-              label="Requests per minute Limit (RPM)"
-              name="team_id"
-              hidden={true}
-            ></Form.Item>
-            <Form.Item
-              label={
-                <span>
-                  Guardrails{' '}
-                  <Tooltip title="Setup your first guardrail">
-                    <a 
-                      href="https://docs.litellm.ai/docs/proxy/guardrails/quick_start" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <InfoCircleOutlined style={{ marginLeft: '4px' }} />
-                    </a>
-                  </Tooltip>
-                </span>
-              }
-              name="guardrails" 
-              className="mt-8"
-              help="Select existing guardrails or enter new ones"
-            >
-              <Select2
-                mode="tags"
-                style={{ width: '100%' }}
-                placeholder="Select or enter guardrails"
-                options={guardrailsList.map(name => ({ value: name, label: name }))}
-              />
-            </Form.Item>
-          </>
-          <div style={{ textAlign: "right", marginTop: "10px" }}>
-            <Button2 htmlType="submit">Save</Button2>
-          </div>
-        </Form>
-      </Modal>
-    );
-  };
-
-  const handleEditClick = (team: any) => {
-    setSelectedTeam(team);
-    setEditModalVisible(true);
-  };
-
-  const handleEditCancel = () => {
-    setEditModalVisible(false);
-    setSelectedTeam(null);
-  };
-
-  const handleEditSubmit = async (formValues: Record<string, any>) => {
-    // Call API to update team with teamId and values
-    const teamId = formValues.team_id; // get team_id
-
-    console.log("handleEditSubmit:", formValues);
-    if (accessToken == null) {
-      return;
-    }
-
-    // Create metadata object with guardrails if they exist
-    formValues.metadata = {
-      ...(formValues.metadata || {}),
-      ...(formValues.guardrails ? { guardrails: formValues.guardrails } : {})
-    };
-    
-    // Remove guardrails from top level since it's now in metadata
-    delete formValues.guardrails;
-
-    let newTeamValues = await teamUpdateCall(accessToken, formValues);
-
-    // Update the teams state with the updated team data
-    if (teams) {
-      const updatedTeams = teams.map((team) =>
-        team.team_id === teamId ? newTeamValues.data : team
-      );
-      setTeams(updatedTeams);
-    }
-    message.success("Team updated successfully");
-
-    setEditModalVisible(false);
-    setSelectedTeam(null);
-  };
 
   const handleOk = () => {
     setIsTeamModalVisible(false);
@@ -431,9 +247,9 @@ const Team: React.FC<TeamProps> = ({
         let _team_id_to_info: Record<string, any> = {};
         let teamList;
         if (userRole != "Admin" && userRole != "Admin Viewer") {
-          teamList = await teamListCall(accessToken, userID)
+          teamList = await teamListCall(accessToken, currentOrg?.organization_id || DEFAULT_ORGANIZATION, userID)
         } else {
-          teamList = await teamListCall(accessToken)
+          teamList = await teamListCall(accessToken, currentOrg?.organization_id || DEFAULT_ORGANIZATION)
         }
         
         for (let i = 0; i < teamList.length; i++) {
@@ -461,7 +277,7 @@ const Team: React.FC<TeamProps> = ({
       if (accessToken != null) {
         const newTeamAlias = formValues?.team_alias;
         const existingTeamAliases = teams?.map((t) => t.team_alias) ?? [];
-        let organizationId = formValues?.organization_id;
+        let organizationId = formValues?.organization_id || currentOrg?.organization_id;
         if (organizationId === "" || typeof organizationId !== 'string') {
           formValues.organization_id = null;
         } else {
@@ -526,10 +342,15 @@ const Team: React.FC<TeamProps> = ({
       {selectedTeamId ? (
         <TeamInfoView 
         teamId={selectedTeamId} 
-        onClose={() => setSelectedTeamId(null)} 
+        onClose={() => {
+          setSelectedTeamId(null);
+          setEditTeam(false);
+        }} 
         accessToken={accessToken}
         is_team_admin={is_team_admin(teams?.find((team) => team.team_id === selectedTeamId))}
         is_proxy_admin={userRole == "Admin"}
+        userModels={userModels}
+        editTeam={editTeam}
       />
     ) : (
       <TabGroup className="gap-2 p-8 h-[75vh] w-full mt-2">
@@ -574,6 +395,10 @@ const Team: React.FC<TeamProps> = ({
               <TableBody>
                 {teams && teams.length > 0
                   ? teams
+                      .filter((team) => {
+                        const targetOrgId = currentOrg ? currentOrg.organization_id : null;
+                        return team.organization_id === targetOrgId;
+                      })                  
                       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                       .map((team: any) => (
                       <TableRow key={team.team_id}>
@@ -721,7 +546,10 @@ const Team: React.FC<TeamProps> = ({
                             <Icon
                               icon={PencilAltIcon}
                               size="sm"
-                              onClick={() => handleEditClick(team)}
+                              onClick={() => {
+                                setSelectedTeamId(team.team_id);
+                                setEditTeam(true);
+                              }}
                             />
                             <Icon
                               onClick={() => handleDelete(team.team_id)}
@@ -786,7 +614,7 @@ const Team: React.FC<TeamProps> = ({
             )}
           </Card>
         </Col>
-        {userRole == "Admin"? (
+        {userRole == "Admin" || userRole == "Org Admin"? (
           <Col numColSpan={1}>
             <Button
               className="mx-auto"
