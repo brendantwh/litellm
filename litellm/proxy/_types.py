@@ -1114,6 +1114,7 @@ class NewOrganizationRequest(LiteLLM_BudgetTable):
     organization_alias: str
     models: List = []
     budget_id: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 class OrganizationRequest(LiteLLMPydanticObjectBase):
@@ -2000,6 +2001,7 @@ class ProxyErrorTypes(str, enum.Enum):
     bad_request_error = "bad_request_error"
     not_found_error = "not_found_error"
     validation_error = "bad_request_error"
+    cache_ping_error = "cache_ping_error"
 
 
 DB_CONNECTION_ERROR_TYPES = (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout)
