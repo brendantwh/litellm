@@ -162,6 +162,7 @@ async def test_regenerate_api_key(prisma_client):
     print(result)
 
     # regenerate the key
+    print("regenerating key: {}".format(generated_key))
     new_key = await regenerate_key_fn(
         key=generated_key,
         user_api_key_dict=UserAPIKeyAuth(
@@ -370,11 +371,7 @@ async def test_get_users(prisma_client):
     assert "users" in result
 
     for user in result["users"]:
-        assert "user_id" in user
-        assert "spend" in user
-        assert "user_email" in user
-        assert "user_role" in user
-        assert "key_count" in user
+        assert isinstance(user, LiteLLM_UserTable)
 
     # Clean up test users
     for user in test_users:
@@ -397,12 +394,12 @@ async def test_get_users_key_count(prisma_client):
     assert len(initial_users["users"]) > 0, "No users found to test with"
 
     test_user = initial_users["users"][0]
-    initial_key_count = test_user["key_count"]
+    initial_key_count = test_user.key_count
 
     # Create a new key for the selected user
     new_key = await generate_key_fn(
         data=GenerateKeyRequest(
-            user_id=test_user["user_id"],
+            user_id=test_user.user_id,
             key_alias=f"test_key_{uuid.uuid4()}",
             models=["fake-model"],
         ),
@@ -418,8 +415,8 @@ async def test_get_users_key_count(prisma_client):
     print("updated_users", updated_users)
     updated_key_count = None
     for user in updated_users["users"]:
-        if user["user_id"] == test_user["user_id"]:
-            updated_key_count = user["key_count"]
+        if user.user_id == test_user.user_id:
+            updated_key_count = user.key_count
             break
 
     assert updated_key_count is not None, "Test user not found in updated users list"
