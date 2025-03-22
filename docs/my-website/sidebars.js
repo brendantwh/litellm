@@ -53,7 +53,7 @@ const sidebars = {
         {
           type: "category",
           label: "Architecture",
-          items: ["proxy/architecture", "proxy/db_info", "router_architecture", "proxy/user_management_heirarchy", "proxy/jwt_auth_arch"],
+          items: ["proxy/architecture", "proxy/db_info", "router_architecture", "proxy/user_management_heirarchy", "proxy/jwt_auth_arch", "proxy/image_handling"],
         },
         {
           type: "link",
@@ -101,7 +101,9 @@ const sidebars = {
             "proxy/admin_ui_sso",
             "proxy/self_serve",
             "proxy/public_teams",
-            "proxy/custom_sso"
+            "proxy/custom_sso",
+            "proxy/ui_credentials",
+            "proxy/ui_logs"
           ],
         },
         {
@@ -231,6 +233,7 @@ const sidebars = {
         "providers/sambanova",
         "providers/custom_llm_server",
         "providers/petals",
+        "providers/snowflake"
       ],
     },
     {
@@ -273,7 +276,7 @@ const sidebars = {
       items: [
         {
           type: "category",
-          label: "Chat",
+          label: "/chat/completions",
           link: {
             type: "generated-index",
             title: "Chat Completions",
@@ -286,11 +289,14 @@ const sidebars = {
             "completion/usage",
           ],
         },
+        "response_api",
         "text_completion",
         "embedding/supported_embedding",
+        "anthropic_unified",
+        "mcp",
         {
           type: "category",
-          label: "Image",
+          label: "/images",
           items: [
             "image_generation",
             "image_variations",
@@ -298,7 +304,7 @@ const sidebars = {
         },
         {
           type: "category",
-          label: "Audio",
+          label: "/audio",
           "items": [
             "audio_transcription",
             "text_to_speech",
@@ -360,8 +366,12 @@ const sidebars = {
       ],
     },
     {
-      type: "doc",
-      id: "proxy/prompt_management"
+      type: "category",
+      label: "[Beta] Prompt Management",
+      items: [
+        "proxy/prompt_management",
+        "proxy/custom_prompt_management"
+      ],
     },
     {
       type: "category",
@@ -372,13 +382,6 @@ const sidebars = {
         "load_test_sdk",
         "load_test_rpm",
       ]
-    },
-    {
-      type: "category",
-      label: "Adding Providers",
-      items: [
-        "adding_provider/directory_structure",
-        "adding_provider/new_rerank_provider"],
     },
     {
       type: "category",
@@ -394,6 +397,7 @@ const sidebars = {
         "observability/logfire_integration",
         "observability/argilla",
         "observability/arize_integration",
+        "observability/phoenix_integration",
         "debugging/local_debugging",
         "observability/raw_request_response",
         "observability/custom_callback",
@@ -439,12 +443,26 @@ const sidebars = {
         },
       ]
     },
-
+    {
+      type: "category",
+      label: "Contributing",
+      items: [
+        "extras/contributing_code",
+        {
+          type: "category",
+          label: "Adding Providers",
+          items: [
+            "adding_provider/directory_structure",
+            "adding_provider/new_rerank_provider"],
+        },
+        "extras/contributing",
+        "contributing",
+      ]
+    },
     {
       type: "category",
       label: "Extras",
       items: [
-        "extras/contributing",
         "data_security",
         "data_retention",
         "migration_policy",
@@ -480,7 +498,6 @@ const sidebars = {
             "projects/pgai",
           ],
         },
-        "contributing",
         "proxy/pii_masking",
         "extras/code_quality",
         "rules",
