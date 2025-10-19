@@ -861,21 +861,13 @@ const CreateKey: React.FC<CreateKeyProps> = ({
                     }
                     name="guardrails"
                     className="mt-4"
-                    help={
-                      premiumUser
-                        ? "Select existing guardrails or enter new ones"
-                        : "Premium feature - Upgrade to set guardrails by key"
-                    }
+                    help="Select existing guardrails or enter new ones"
                   >
                     <Select
                       mode="tags"
                       style={{ width: "100%" }}
-                      disabled={!premiumUser}
-                      placeholder={
-                        !premiumUser
-                          ? "Premium feature - Upgrade to set guardrails by key"
-                          : "Select or enter guardrails"
-                      }
+                      disabled={false}
+                      placeholder="Select or enter guardrails"
                       options={guardrailsList.map((name) => ({ value: name, label: name }))}
                     />
                   </Form.Item>
@@ -897,19 +889,13 @@ const CreateKey: React.FC<CreateKeyProps> = ({
                     }
                     name="prompts"
                     className="mt-4"
-                    help={
-                      premiumUser
-                        ? "Select existing prompts or enter new ones"
-                        : "Premium feature - Upgrade to set prompts by key"
-                    }
+                    help="Select existing prompts or enter new ones"
                   >
                     <Select
                       mode="tags"
                       style={{ width: "100%" }}
-                      disabled={!premiumUser}
-                      placeholder={
-                        !premiumUser ? "Premium feature - Upgrade to set prompts by key" : "Select or enter prompts"
-                      }
+                      disabled={false}
+                      placeholder="Select or enter prompts"
                       options={promptsList.map((name) => ({ value: name, label: name }))}
                     />
                   </Form.Item>
@@ -931,20 +917,14 @@ const CreateKey: React.FC<CreateKeyProps> = ({
                     }
                     name="allowed_passthrough_routes"
                     className="mt-4"
-                    help={
-                      premiumUser
-                        ? "Select existing pass through routes or enter new ones"
-                        : "Premium feature - Upgrade to set pass through routes by key"
-                    }
+                    help="Select existing pass through routes or enter new ones"
                   >
                     <PassThroughRoutesSelector
                       onChange={(values: string[]) => form.setFieldValue("allowed_passthrough_routes", values)}
                       value={form.getFieldValue("allowed_passthrough_routes")}
                       accessToken={accessToken}
-                      placeholder={
-                        !premiumUser ? "Premium feature - Upgrade to set pass through routes by key" : "Select or enter pass through routes"
-                      }
-                      disabled={!premiumUser}
+                      placeholder="Select or enter pass through routes"
+                      disabled={false}
                       teamId={selectedCreateKeyTeam ? selectedCreateKeyTeam.team_id : null}
                     />
                   </Form.Item>
@@ -1062,58 +1042,22 @@ const CreateKey: React.FC<CreateKeyProps> = ({
                     </AccordionBody>
                   </Accordion>
 
-                  {premiumUser ? (
-                    <Accordion className="mt-4 mb-4">
-                      <AccordionHeader>
-                        <b>Logging Settings</b>
-                      </AccordionHeader>
-                      <AccordionBody>
-                        <div className="mt-4">
-                          <PremiumLoggingSettings
-                            value={loggingSettings}
-                            onChange={setLoggingSettings}
-                            premiumUser={true}
-                            disabledCallbacks={disabledCallbacks}
-                            onDisabledCallbacksChange={setDisabledCallbacks}
-                          />
-                        </div>
-                      </AccordionBody>
-                    </Accordion>
-                  ) : (
-                    <Tooltip
-                      title={
-                        <span>
-                          Key-level logging settings is an enterprise feature, get in touch -
-                          <a href="https://www.litellm.ai/enterprise" target="_blank">
-                            https://www.litellm.ai/enterprise
-                          </a>
-                        </span>
-                      }
-                      placement="top"
-                    >
-                      <div style={{ position: "relative" }}>
-                        <div style={{ opacity: 0.5 }}>
-                          <Accordion className="mt-4 mb-4">
-                            <AccordionHeader>
-                              <b>Logging Settings</b>
-                            </AccordionHeader>
-                            <AccordionBody>
-                              <div className="mt-4">
-                                <PremiumLoggingSettings
-                                  value={loggingSettings}
-                                  onChange={setLoggingSettings}
-                                  premiumUser={false}
-                                  disabledCallbacks={disabledCallbacks}
-                                  onDisabledCallbacksChange={setDisabledCallbacks}
-                                />
-                              </div>
-                            </AccordionBody>
-                          </Accordion>
-                        </div>
-                        <div style={{ position: "absolute", inset: 0, cursor: "not-allowed" }} />
+                  <Accordion className="mt-4 mb-4">
+                    <AccordionHeader>
+                      <b>Logging Settings</b>
+                    </AccordionHeader>
+                    <AccordionBody>
+                      <div className="mt-4">
+                        <PremiumLoggingSettings
+                          value={loggingSettings}
+                          onChange={setLoggingSettings}
+                          premiumUser={true}
+                          disabledCallbacks={disabledCallbacks}
+                          onDisabledCallbacksChange={setDisabledCallbacks}
+                        />
                       </div>
-                    </Tooltip>
-                  )}
+                    </AccordionBody>
+                  </Accordion>
 
                   <Accordion className="mt-4 mb-4">
                     <AccordionHeader>

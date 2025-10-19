@@ -1025,18 +1025,20 @@ def _check_team_member_admin_add(
     member: Union[Member, List[Member]],
     premium_user: bool,
 ):
-    if isinstance(member, Member) and member.role == "admin":
-        if premium_user is not True:
-            raise ValueError(
-                f"Assigning team admins is a premium feature. {CommonProxyErrors.not_premium_user.value}"
-            )
-    elif isinstance(member, List):
-        for m in member:
-            if m.role == "admin":
-                if premium_user is not True:
-                    raise ValueError(
-                        f"Assigning team admins is a premium feature. Got={m}. {CommonProxyErrors.not_premium_user.value}. "
-                    )
+    # OPEN SOURCE: Team admins are now available to everyone
+    # if isinstance(member, Member) and member.role == "admin":
+    #     if premium_user is not True:
+    #         raise ValueError(
+    #             f"Assigning team admins is a premium feature. {CommonProxyErrors.not_premium_user.value}"
+    #         )
+    # elif isinstance(member, List):
+    #     for m in member:
+    #         if m.role == "admin":
+    #             if premium_user is not True:
+    #                 raise ValueError(
+    #                     f"Assigning team admins is a premium feature. Got={m}. {CommonProxyErrors.not_premium_user.value}. "
+    #                 )
+    pass  # No premium checks needed anymore
 
 
 def team_call_validation_checks(

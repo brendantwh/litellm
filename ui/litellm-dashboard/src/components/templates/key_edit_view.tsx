@@ -254,45 +254,37 @@ export function KeyEditView({
               form.setFieldValue("guardrails", v);
             }}
             accessToken={accessToken}
-            disabled={!premiumUser}
+            disabled={false}
           />
         )}
       </Form.Item>
 
       <Form.Item label="Prompts" name="prompts">
-        <Tooltip title={!premiumUser ? "Setting prompts by key is a premium feature" : ""} placement="top">
-          <Select
-            mode="tags"
-            style={{ width: "100%" }}
-            disabled={!premiumUser}
-            placeholder={
-              !premiumUser
-                ? "Premium feature - Upgrade to set prompts by key"
-                : Array.isArray(keyData.metadata?.prompts) && keyData.metadata.prompts.length > 0
-                  ? `Current: ${keyData.metadata.prompts.join(", ")}`
-                  : "Select or enter prompts"
-            }
-            options={promptsList.map((name) => ({ value: name, label: name }))}
-          />
-        </Tooltip>
+        <Select
+          mode="tags"
+          style={{ width: "100%" }}
+          disabled={false}
+          placeholder={
+            Array.isArray(keyData.metadata?.prompts) && keyData.metadata.prompts.length > 0
+              ? `Current: ${keyData.metadata.prompts.join(", ")}`
+              : "Select or enter prompts"
+          }
+          options={promptsList.map((name) => ({ value: name, label: name }))}
+        />
       </Form.Item>
 
       <Form.Item label="Allowed Pass Through Routes" name="allowed_passthrough_routes">
-        <Tooltip title={!premiumUser ? "Setting allowed pass through routes by key is a premium feature" : ""} placement="top">
-          <PassThroughRoutesSelector
-            onChange={(values: string[]) => form.setFieldValue("allowed_passthrough_routes", values)}
-            value={form.getFieldValue("allowed_passthrough_routes")}
-            accessToken={accessToken || ""}
-            placeholder={
-              !premiumUser
-                ? "Premium feature - Upgrade to set allowed pass through routes by key"
-                : Array.isArray(keyData.metadata?.allowed_passthrough_routes) && keyData.metadata.allowed_passthrough_routes.length > 0
-                  ? `Current: ${keyData.metadata.allowed_passthrough_routes.join(", ")}`
-                  : "Select or enter allowed pass through routes"
-            }
-            disabled={!premiumUser}
-          />
-        </Tooltip>
+        <PassThroughRoutesSelector
+          onChange={(values: string[]) => form.setFieldValue("allowed_passthrough_routes", values)}
+          value={form.getFieldValue("allowed_passthrough_routes")}
+          accessToken={accessToken || ""}
+          placeholder={
+            Array.isArray(keyData.metadata?.allowed_passthrough_routes) && keyData.metadata.allowed_passthrough_routes.length > 0
+              ? `Current: ${keyData.metadata.allowed_passthrough_routes.join(", ")}`
+              : "Select or enter allowed pass through routes"
+          }
+          disabled={false}
+        />
       </Form.Item>
 
       <Form.Item label="Vector Stores" name="vector_stores">

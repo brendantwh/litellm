@@ -581,10 +581,11 @@ async def _common_key_generation_helper(  # noqa: PLR0915
     if "tags" in data_json:
         from litellm.proxy.proxy_server import premium_user
 
-        if premium_user is not True and data_json["tags"] is not None:
-            raise ValueError(
-                f"Only premium users can add tags to keys. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: Tags are now available to everyone
+        # if premium_user is not True and data_json["tags"] is not None:
+        #     raise ValueError(
+        #         f"Only premium users can add tags to keys. {CommonProxyErrors.not_premium_user.value}"
+        #     )
 
         _metadata = data_json.get("metadata")
         if not _metadata:
@@ -2439,12 +2440,14 @@ async def regenerate_key_fn(
 
         is_master_key_regeneration = data and data.new_master_key is not None
 
-        if (
-            premium_user is not True and not is_master_key_regeneration
-        ):  # allow master key regeneration for non-premium users
-            raise ValueError(
-                f"Regenerating Virtual Keys is an Enterprise feature, {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: Key regeneration is now available to everyone
+        # Premium check has been removed - all users can regenerate keys
+        # if (
+        #     premium_user is not True and not is_master_key_regeneration
+        # ):  # allow master key regeneration for non-premium users
+        #     raise ValueError(
+        #         f"Regenerating Virtual Keys is an Enterprise feature, {CommonProxyErrors.not_premium_user.value}"
+        #     )
 
         # Check if key exists, raise exception if key is not in the DB
         key = data.key if data and data.key else key
@@ -3559,10 +3562,11 @@ def validate_model_max_budget(model_max_budget: Optional[Dict]) -> None:
         if model_max_budget is not None:
             from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
 
-            if premium_user is not True:
-                raise ValueError(
-                    f"You must have an enterprise license to set model_max_budget. {CommonProxyErrors.not_premium_user.value}"
-                )
+            # OPEN SOURCE: model_max_budget is now available to everyone
+            # if premium_user is not True:
+            #     raise ValueError(
+            #         f"You must have an enterprise license to set model_max_budget. {CommonProxyErrors.not_premium_user.value}"
+            #     )
             for _model, _budget_info in model_max_budget.items():
                 assert isinstance(_model, str)
 

@@ -102,11 +102,12 @@ export default function KeyInfoView({
       const currentKey = formValues.token;
       formValues.key = currentKey;
 
-      // Guard premium features
-      if (!premiumUser) {
-        delete formValues.guardrails;
-        delete formValues.prompts;
-      }
+      // Guard premium features - REMOVED for open source
+      // All features are now available to everyone
+      // if (!premiumUser) {
+      //   delete formValues.guardrails;
+      //   delete formValues.prompts;
+      // }
 
       // Handle max budget empty string
       formValues.max_budget = mapEmptyStringToNull(formValues.max_budget);
@@ -328,21 +329,14 @@ export default function KeyInfoView({
         </div>
         {userRole && rolesWithWriteAccess.includes(userRole) && (
           <div className="flex gap-2">
-            <Tooltip
-              title={!premiumUser ? "This is a LiteLLM Enterprise feature, and requires a valid key to use." : ""}
+            <Button
+              icon={RefreshIcon}
+              variant="secondary"
+              onClick={() => setIsRegenerateModalOpen(true)}
+              className="flex items-center"
             >
-              <span className="inline-block">
-                <Button
-                  icon={RefreshIcon}
-                  variant="secondary"
-                  onClick={() => setIsRegenerateModalOpen(true)}
-                  className="flex items-center"
-                  disabled={!premiumUser}
-                >
-                  Regenerate Key
-                </Button>
-              </span>
-            </Tooltip>
+              Regenerate Key
+            </Button>
             <Button
               icon={TrashIcon}
               variant="secondary"
