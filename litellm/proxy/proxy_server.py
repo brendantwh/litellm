@@ -472,7 +472,9 @@ except ImportError:
 
 server_root_path = os.getenv("SERVER_ROOT_PATH", "")
 _license_check = LicenseCheck()
-premium_user: bool = _license_check.is_premium()
+# OPEN SOURCE: All features available to everyone
+# To re-enable license checks, change this to: _license_check.is_premium()
+premium_user: bool = True
 premium_user_data: Optional[
     "EnterpriseLicenseData"
 ] = _license_check.airgapped_license_data
@@ -605,8 +607,9 @@ async def proxy_startup_event(app: FastAPI):
             premium_user
         )
     )
-    if premium_user is False:
-        premium_user = _license_check.is_premium()
+    # OPEN SOURCE: License check disabled - all features available
+    # if premium_user is False:
+    #     premium_user = _license_check.is_premium()
 
     ## CHECK MASTER KEY IN ENVIRONMENT ##
     master_key = get_secret_str("LITELLM_MASTER_KEY")
