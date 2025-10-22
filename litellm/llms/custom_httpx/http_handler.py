@@ -11,6 +11,15 @@ from aiohttp import ClientSession, TCPConnector
 from httpx import USE_CLIENT_DEFAULT, AsyncHTTPTransport, HTTPTransport
 from httpx._types import RequestFiles
 
+# Try to import httpx-curl-cffi transport
+try:
+    from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    AsyncCurlTransport = None  # type: ignore
+    CurlOpt = None  # type: ignore
+
 import litellm
 from litellm._logging import verbose_logger
 from litellm.constants import (
@@ -577,6 +586,16 @@ class AsyncHTTPHandler:
             - Some users have seen httpx ConnectionError when using ipv6 - forcing ipv4 resolves the issue for them
         """
         #########################################################
+        # CURL_CFFI TRANSPORT (highest priority if enabled)
+        #########################################################
+        if AsyncHTTPHandler._should_use_curl_cffi_transport():
+            verbose_logger.debug("Using Curl CFFI Transport...")
+            return AsyncHTTPHandler._create_curl_cffi_transport(
+                ssl_context=ssl_context,
+                ssl_verify=ssl_verify,
+            )
+
+        #########################################################
         # AIOHTTP TRANSPORT is off by default
         #########################################################
         if AsyncHTTPHandler._should_use_aiohttp_transport():
@@ -590,6 +609,85 @@ class AsyncHTTPHandler:
         # HTTPX TRANSPORT is used when aiohttp is not installed
         #########################################################
         return AsyncHTTPHandler._create_httpx_transport()
+
+    @staticmethod
+    def _should_use_curl_cffi_transport() -> bool:
+        """
+        Check if curl_cffi transport should be used.
+        
+        Controlled by:
+            - Environment variable: LITELLM_USE_CURL_CFFI=true
+            - Or litellm.use_curl_cffi = True
+        
+        Benefits of curl_cffi:
+            - Better performance in some scenarios
+            - Browser impersonation for bot detection evasion
+            - TLS/JA3 fingerprint control
+        
+        Default: False (disabled)
+        """
+        from litellm.secret_managers.main import str_to_bool
+
+        if not CURL_CFFI_AVAILABLE:
+            return False
+        
+        # Check environment variable
+        env_enabled = str_to_bool(os.getenv("LITELLM_USE_CURL_CFFI", "False"))
+        if env_enabled is True:
+            return True
+        
+        # Check litellm module variable
+        if hasattr(litellm, "use_curl_cffi") and litellm.use_curl_cffi is True:
+            return True
+        
+        return False
+
+    @staticmethod
+    def _create_curl_cffi_transport(
+        ssl_context: Optional[ssl.SSLContext] = None,
+        ssl_verify: Optional[bool] = None,
+    ) -> AsyncCurlTransport:  # type: ignore
+        """
+        Creates a Curl CFFI transport for httpx.AsyncClient.
+        
+        Note: curl_cffi provides:
+            - Better performance than pure Python implementations
+            - Browser impersonation capabilities
+            - TLS/JA3 fingerprint customization
+        
+        Args:
+            ssl_context: Custom SSL context (Note: curl_cffi uses libcurl, not OpenSSL)
+            ssl_verify: Whether to verify SSL certificates
+        
+        Returns:
+            AsyncCurlTransport configured for litellm
+        """
+        # Determine max connections from litellm settings
+        # Default to 100 for curl_cffi (it uses connection pooling differently)
+        max_connections = getattr(litellm, "curl_cffi_max_connections", 100)
+        
+        transport_kwargs = {
+            "max_connections": max_connections,
+            # Required for parallel requests - see https://github.com/lexiforest/curl_cffi/issues/302
+            "curl_options": {CurlOpt.FRESH_CONNECT: True},  # type: ignore
+        }
+        
+        # Handle SSL verification
+        if ssl_verify is False:
+            transport_kwargs["verify"] = False
+        elif ssl_verify is True or ssl_verify is None:
+            transport_kwargs["verify"] = True
+        
+        # Note: ssl_context is not directly supported by curl_cffi
+        # as it uses libcurl's TLS implementation, not Python's ssl module
+        if ssl_context is not None:
+            verbose_logger.warning(
+                "ssl_context is not supported with curl_cffi transport. "
+                "curl_cffi uses libcurl's TLS implementation. "
+                "Falling back to verify parameter."
+            )
+        
+        return AsyncCurlTransport(**transport_kwargs)  # type: ignore
 
     @staticmethod
     def _should_use_aiohttp_transport() -> bool:

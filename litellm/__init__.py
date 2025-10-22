@@ -383,6 +383,8 @@ disable_aiohttp_trust_env: bool = (
     False  # When False, aiohttp will respect HTTP(S)_PROXY env vars
 )
 force_ipv4: bool = False  # when True, litellm will force ipv4 for all LLM requests. Some users have seen httpx ConnectionError when using ipv6.
+use_curl_cffi: bool = False  # Set to True to use curl_cffi transport (faster, supports browser impersonation). Requires httpx-curl-cffi package.
+curl_cffi_max_connections: int = 100  # Maximum connections for curl_cffi transport
 module_level_aclient = AsyncHTTPHandler(
     timeout=request_timeout, client_alias="module level aclient"
 )

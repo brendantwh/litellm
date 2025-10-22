@@ -1,6 +1,7 @@
 # LITELLM PROXY DEPENDENCIES #
 anyio==4.8.0 # openai + http req.
 httpx==0.28.1
+httpx-curl-cffi==0.1.4 # optional curl_cffi transport for httpx (faster, bot detection evasion)
 openai==1.99.5  # openai req.
 fastapi==0.116.1 # server dep
 starlette==0.47.2 # starlette fastapi dep
