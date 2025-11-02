@@ -32,16 +32,20 @@ const sidebars = {
       items: [
         "proxy/guardrails/quick_start",
         ...[
+          "adding_provider/adding_guardrail_support",
           "proxy/guardrails/aim_security",
           "proxy/guardrails/aporia_api",
           "proxy/guardrails/azure_content_guardrail",
           "proxy/guardrails/bedrock",
           "proxy/guardrails/enkryptai",
+          "proxy/guardrails/ibm_guardrails",
+          "proxy/guardrails/grayswan",
           "proxy/guardrails/lasso_security",
           "proxy/guardrails/guardrails_ai",
           "proxy/guardrails/lakera_ai",
           "proxy/guardrails/model_armor",
           "proxy/guardrails/noma_security",
+          "proxy/guardrails/dynamoai",
           "proxy/guardrails/openai_moderation",
           "proxy/guardrails/pangea",
           "proxy/guardrails/pillar_security",
@@ -290,6 +294,7 @@ const sidebars = {
             "proxy/managed_batches",
           ]
         },
+        "containers",
         {
           type: "category",
           label: "/chat/completions",
@@ -307,6 +312,7 @@ const sidebars = {
           ],
         },
         "text_completion",
+        "bedrock_converse",
         "embedding/supported_embedding",
         {
           type: "category",
@@ -326,6 +332,7 @@ const sidebars = {
         },
           "generateContent",
           "apply_guardrail",
+          "bedrock_invoke",
         {
           type: "category",
           label: "/images",
@@ -335,6 +342,7 @@ const sidebars = {
             "image_variations",
           ]
         },
+        "videos",
         {
           type: "category",
           label: "/mcp - Model Context Protocol",
@@ -346,9 +354,8 @@ const sidebars = {
             "mcp_guardrail",
           ]
         },
+        "anthropic_unified",
         "moderation",
-        "bedrock_invoke",
-        "bedrock_converse",
         "ocr",
         {
           type: "category",
@@ -370,6 +377,7 @@ const sidebars = {
               items: [
                 "pass_through/vertex_ai",
                 "pass_through/vertex_ai_live_websocket",
+                "pass_through/vertex_ai_search_datastores",
               ]
             },
             "pass_through/vllm",
@@ -379,11 +387,24 @@ const sidebars = {
         "realtime",
         "rerank",
         "response_api",
-        "anthropic_unified",
+        {
+          type: "category",
+          label: "/search",
+          items: [
+            "search/index",
+            "search/perplexity",
+            "search/tavily",
+            "search/exa_ai",
+            "search/parallel_ai",
+            "search/google_pse",
+            "search/dataforseo",
+          ]
+        },
         {
           type: "category",
           label: "/vector_stores",
           items: [
+            "vector_stores/create",
             "vector_stores/search",
           ]
         },
@@ -401,12 +422,18 @@ const sidebars = {
       },
       items: [
         {
+          type: "doc",
+          id: "provider_registration/index",
+          label: "Integrate as a Model Provider",
+        },
+        {
           type: "category",
           label: "OpenAI",
           items: [
             "providers/openai",
             "providers/openai/responses_api",
             "providers/openai/text_to_speech",
+            "providers/openai/videos",
           ]
         },
         "providers/text_completion_openai",
@@ -418,6 +445,8 @@ const sidebars = {
             "providers/azure/azure",
             "providers/azure/azure_responses",
             "providers/azure/azure_embedding",
+            "providers/azure/azure_speech",
+            "providers/azure/videos",
           ]
         },
         {
@@ -425,7 +454,11 @@ const sidebars = {
           label: "Azure AI",
           items: [
             "providers/azure_ai",
+            "providers/azure_ocr",
+            "providers/azure_ai_speech",
             "providers/azure_ai_img",
+            "providers/azure_ai_vector_stores",
+            "providers/azure_ai/azure_ai_vector_stores_passthrough",
           ]
         },
         {
@@ -457,11 +490,14 @@ const sidebars = {
           items: [
             "providers/bedrock",
             "providers/bedrock_embedding",
+            "providers/bedrock_image_gen",
+            "providers/bedrock_rerank",
             "providers/bedrock_agents",
             "providers/bedrock_batches",
             "providers/bedrock_vector_store",
           ]
         },
+        "providers/milvus_vector_stores",
         "providers/litellm_proxy",
         "providers/meta_llama",
         "providers/mistral",
@@ -504,6 +540,7 @@ const sidebars = {
         "providers/groq",
         "providers/deepseek",
         "providers/elevenlabs",
+        "providers/fal_ai",
         "providers/fireworks_ai",
         "providers/clarifai",
         "providers/compactifai",
@@ -579,7 +616,8 @@ const sidebars = {
         "guides/finetuned_models",
         "guides/security_settings",
         "proxy/veo_video_generation",
-        "reasoning_content"
+        "reasoning_content",
+        "extras/creating_adapters",
       ]
     },
 
@@ -681,7 +719,8 @@ const sidebars = {
           label: "Adding Providers",
           items: [
             "adding_provider/directory_structure",
-            "adding_provider/new_rerank_provider"],
+            "adding_provider/new_rerank_provider",
+          ]
         },
         "extras/contributing",
         "contributing",
@@ -736,11 +775,6 @@ const sidebars = {
         "proxy/customer_routing",
         "proxy_server",
       ],
-    },
-    {
-      type: "doc",
-      id: "provider_registration/index",
-      label: "Integrate as a Model Provider",
     },
     "troubleshoot",
   ],
