@@ -131,11 +131,19 @@ async def convert_to_streaming_response_async(response_object: Optional[dict] = 
                     t["index"] = index
                 pydantic_tool_calls.append(ChatCompletionDeltaToolCall(**t))
             choice["message"]["tool_calls"] = pydantic_tool_calls
+        # Extract reasoning content from delta if present
+        reasoning_content = None
+        if "reasoning" in choice["message"]:
+            reasoning_content = choice["message"]["reasoning"]
+        elif "reasoning_content" in choice["message"]:
+            reasoning_content = choice["message"]["reasoning_content"]
+
         delta = Delta(
             content=choice["message"].get("content", None),
             role=choice["message"]["role"],
             function_call=choice["message"].get("function_call", None),
             tool_calls=choice["message"].get("tool_calls", None),
+            reasoning_content=reasoning_content,
         )
         finish_reason = choice.get("finish_reason", None)
 
@@ -188,7 +196,15 @@ def convert_to_streaming_response(response_object: Optional[dict] = None):
     model_response_object = ModelResponseStream()
     choice_list: List[StreamingChoices] = []
     for idx, choice in enumerate(response_object["choices"]):
-        delta = Delta(**choice["message"])
+        # Extract reasoning content from delta if present
+        message_dict = choice["message"].copy()
+        reasoning_content = None
+        if "reasoning" in message_dict:
+            reasoning_content = message_dict.pop("reasoning")
+        elif "reasoning_content" in message_dict:
+            reasoning_content = message_dict.pop("reasoning_content")
+
+        delta = Delta(reasoning_content=reasoning_content, **message_dict)
         finish_reason = choice.get("finish_reason", None)
         if finish_reason is None:
             # gpt-4 vision can return 'finish_reason' or 'finish_details'

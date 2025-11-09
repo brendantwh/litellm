@@ -903,3 +903,71 @@ def test_convert_to_model_response_object_with_thinking_content():
     resp: ModelResponse = convert_to_model_response_object(**args)
     assert resp is not None
     assert resp.choices[0].message.reasoning_content is not None
+
+
+def test_convert_to_streaming_response_with_reasoning():
+    """Test that convert_to_streaming_response handles reasoning content correctly."""
+    from litellm.litellm_core_utils.llm_response_utils.convert_dict_to_response import (
+        convert_to_streaming_response,
+    )
+
+    # Mock Cerebras streaming response with reasoning in message (as expected by conversion function)
+    response_object = {
+        "id": "chatcmpl-cerebras-test",
+        "created": 1741057687,
+        "model": "cerebras/llama3-70b-instruct",
+        "object": "chat.completion.chunk",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "reasoning": "This is the reasoning content from Cerebras",
+                    "content": "This is the main response content"
+                },
+                "finish_reason": None,
+            }
+        ],
+    }
+
+    # Convert to streaming response
+    result = convert_to_streaming_response(response_object)
+
+    assert result is not None
+    assert len(result.choices) == 1
+    assert result.choices[0].delta.reasoning_content == "This is the reasoning content from Cerebras"
+    assert result.choices[0].delta.content == "This is the main response content"
+
+
+def test_convert_to_streaming_response_with_reasoning_content_field():
+    """Test that convert_to_streaming_response handles reasoning_content field correctly."""
+    from litellm.litellm_core_utils.llm_response_utils.convert_dict_to_response import (
+        convert_to_streaming_response,
+    )
+
+    # Mock response with reasoning_content field (alternative format)
+    response_object = {
+        "id": "chatcmpl-cerebras-test-2",
+        "created": 1741057688,
+        "model": "cerebras/llama3-70b-instruct",
+        "object": "chat.completion.chunk",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "reasoning_content": "This is reasoning content from reasoning_content field",
+                    "content": "This is the main response content"
+                },
+                "finish_reason": None,
+            }
+        ],
+    }
+
+    # Convert to streaming response
+    result = convert_to_streaming_response(response_object)
+
+    assert result is not None
+    assert len(result.choices) == 1
+    assert result.choices[0].delta.reasoning_content == "This is reasoning content from reasoning_content field"
+    assert result.choices[0].delta.content == "This is the main response content"
