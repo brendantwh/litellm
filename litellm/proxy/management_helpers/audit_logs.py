@@ -78,8 +78,9 @@ async def create_audit_log_for_update(request_data: LiteLLM_AuditLogs):
 
     from litellm.proxy.proxy_server import premium_user, prisma_client
 
-    if premium_user is not True:
-        return
+    # OPEN SOURCE: License checks disabled
+    # if premium_user is not True:
+    #     return
 
     if prisma_client is None:
         raise Exception("prisma_client is None, no DB connected")

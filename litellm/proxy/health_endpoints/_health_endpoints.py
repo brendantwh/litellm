@@ -847,7 +847,8 @@ async def health_readiness():
         try:
             from litellm.proxy.proxy_server import _license_check  # type: ignore
 
-            license_available: bool = _license_check.is_premium() if _license_check else False
+            # OPEN SOURCE: License checks disabled - always return True
+            license_available: bool = True  # _license_check.is_premium() if _license_check else False
             license_expiration: Optional[str] = None
 
             if getattr(_license_check, "airgapped_license_data", None):

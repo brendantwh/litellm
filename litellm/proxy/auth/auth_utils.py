@@ -226,10 +226,11 @@ async def pre_db_read_auth_checks(
     # Check 4. Check if request route is an allowed route on the proxy
     if "allowed_routes" in general_settings:
         _allowed_routes = general_settings["allowed_routes"]
-        if premium_user is not True:
-            verbose_proxy_logger.error(
-                f"Trying to set allowed_routes. This is an Enterprise feature. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     verbose_proxy_logger.error(
+        #         f"Trying to set allowed_routes. This is an Enterprise feature. {CommonProxyErrors.not_premium_user.value}"
+        #     )
         if route not in _allowed_routes:
             verbose_proxy_logger.error(
                 f"Route {route} not in allowed_routes={_allowed_routes}"
@@ -265,8 +266,9 @@ def route_in_additonal_public_routes(current_route: str):
     from litellm.proxy.proxy_server import general_settings, premium_user
 
     try:
-        if premium_user is not True:
-            return False
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     return False
         # check if this is defined on the config
         if general_settings is None:
             return False
@@ -323,11 +325,12 @@ async def check_if_request_size_is_safe(request: Request) -> bool:
 
     if max_request_size_mb is not None:
         # Check if premium user
-        if premium_user is not True:
-            verbose_proxy_logger.warning(
-                f"using max_request_size_mb - not checking -  this is an enterprise only feature. {CommonProxyErrors.not_premium_user.value}"
-            )
-            return True
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     verbose_proxy_logger.warning(
+        #         f"using max_request_size_mb - not checking -  this is an enterprise only feature. {CommonProxyErrors.not_premium_user.value}"
+        #     )
+        #     return True
 
         # Get the request body
         content_length = request.headers.get("content-length")
@@ -387,11 +390,12 @@ async def check_response_size_is_safe(response: Any) -> bool:
     max_response_size_mb = general_settings.get("max_response_size_mb", None)
     if max_response_size_mb is not None:
         # Check if premium user
-        if premium_user is not True:
-            verbose_proxy_logger.warning(
-                f"using max_response_size_mb - not checking -  this is an enterprise only feature. {CommonProxyErrors.not_premium_user.value}"
-            )
-            return True
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     verbose_proxy_logger.warning(
+        #         f"using max_response_size_mb - not checking -  this is an enterprise only feature. {CommonProxyErrors.not_premium_user.value}"
+        #     )
+        #     return True
 
         response_size_mb = bytes_to_mb(bytes_value=sys.getsizeof(response))
         verbose_proxy_logger.debug(f"response size in MB={response_size_mb}")

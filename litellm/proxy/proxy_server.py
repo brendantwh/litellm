@@ -2024,7 +2024,8 @@ class ProxyConfig:
             # check if litellm_license in general_settings
             if "LITELLM_LICENSE" in environment_variables:
                 _license_check.license_str = os.getenv("LITELLM_LICENSE", None)
-                premium_user = _license_check.is_premium()
+                # OPEN SOURCE: License checks disabled
+                # premium_user = _license_check.is_premium()
         return
 
     async def load_config(  # noqa: PLR0915
@@ -2406,10 +2407,11 @@ class ProxyConfig:
             )  # can be either ["admin_only" or "all"]
             ### ALLOWED IP ###
             allowed_ips = general_settings.get("allowed_ips", None)
-            if allowed_ips is not None and premium_user is False:
-                raise ValueError(
-                    "allowed_ips is an Enterprise Feature. Please add a valid LITELLM_LICENSE to your envionment."
-                )
+            # OPEN SOURCE: License checks disabled
+            # if allowed_ips is not None and premium_user is False:
+            #     raise ValueError(
+            #         "allowed_ips is an Enterprise Feature. Please add a valid LITELLM_LICENSE to your envionment."
+            #     )
             ## BUDGET RESCHEDULER ##
             proxy_budget_rescheduler_min_time = general_settings.get(
                 "proxy_budget_rescheduler_min_time", proxy_budget_rescheduler_min_time
@@ -2464,7 +2466,8 @@ class ProxyConfig:
             # check if litellm_license in general_settings
             if "litellm_license" in general_settings:
                 _license_check.license_str = general_settings["litellm_license"]
-                premium_user = _license_check.is_premium()
+                # OPEN SOURCE: License checks disabled
+                # premium_user = _license_check.is_premium()
 
         router_params: dict = {
             "cache_responses": litellm.cache

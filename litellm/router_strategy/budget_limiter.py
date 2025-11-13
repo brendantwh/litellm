@@ -799,10 +799,11 @@ class RouterBudgetLimiting(CustomLogger):
             return
         from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
 
-        if premium_user is not True:
-            raise ValueError(
-                f"Tag budgets are an Enterprise only feature, {CommonProxyErrors.not_premium_user}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         f"Tag budgets are an Enterprise only feature, {CommonProxyErrors.not_premium_user}"
+        #     )
 
         if self.tag_budget_config is None:
             self.tag_budget_config = {}

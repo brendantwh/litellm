@@ -63,8 +63,9 @@ class EnterpriseCustomSSOHandler:
             premium_user,
             user_custom_ui_sso_sign_in_handler,
         )
-        if premium_user is not True:
-            raise ValueError(CommonProxyErrors.not_premium_user.value)
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(CommonProxyErrors.not_premium_user.value)
         
         if user_custom_ui_sso_sign_in_handler is None:
             raise ValueError("custom_ui_sso_sign_in_handler is not configured. Please set it in general_settings.")

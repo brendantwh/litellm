@@ -130,11 +130,12 @@ class Oauth2Handler:
         """
         from litellm.proxy.proxy_server import premium_user
 
-        if premium_user is not True:
-            raise ValueError(
-                "Oauth2 token validation is only available for premium users"
-                + CommonProxyErrors.not_premium_user.value
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         "Oauth2 token validation is only available for premium users"
+        #         + CommonProxyErrors.not_premium_user.value
+        #     )
 
         verbose_proxy_logger.debug("Oauth2 token validation for token=%s", token)
 

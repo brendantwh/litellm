@@ -47,10 +47,11 @@ class CyberArkSecretManager(BaseSecretManager):
         _refresh_interval = int(os.environ.get("CYBERARK_REFRESH_INTERVAL", "300"))
         self.cache = InMemoryCache(default_ttl=_refresh_interval)
 
-        if premium_user is not True:
-            raise ValueError(
-                f"CyberArk secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         f"CyberArk secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
+        #     )
 
     def _authenticate(self) -> str:
         """

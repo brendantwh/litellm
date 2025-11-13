@@ -66,11 +66,12 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use Llama Guard"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use Llama Guard"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
                 llama_guard_object = _ENTERPRISE_LlamaGuard()
                 imported_list.append(llama_guard_object)
@@ -85,11 +86,12 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use secret hiding"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use secret hiding"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
                 _secret_detection_object = _ENTERPRISE_SecretDetection()
                 imported_list.append(_secret_detection_object)
@@ -104,13 +106,14 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package_docker.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use OpenAI Moderations Check"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use OpenAI Moderations Check"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
-                openai_moderations_object = _ENTERPRISE_OpenAI_Moderation()
+                openai_moderation_object = _ENTERPRISE_OpenAI_Moderation()
                 imported_list.append(openai_moderations_object)
             elif isinstance(callback, str) and callback == "lakera_prompt_injection":
                 from litellm.proxy.guardrails.guardrail_hooks.lakera_ai import (
@@ -140,11 +143,12 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package_docker.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use Google Text Moderation"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use Google Text Moderation"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
                 google_text_moderation_obj = _ENTERPRISE_GoogleTextModeration()
                 imported_list.append(google_text_moderation_obj)
@@ -159,11 +163,12 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use Llm Guard"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use Llm Guard"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
                 llm_guard_moderation_obj = _ENTERPRISE_LLMGuard()
                 imported_list.append(llm_guard_moderation_obj)
@@ -178,11 +183,12 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package_docker.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use ENTERPRISE BlockedUser"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use ENTERPRISE BlockedUser"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
                 blocked_user_list = _ENTERPRISE_BlockedUserList(
                     prisma_client=prisma_client
@@ -199,11 +205,12 @@ def initialize_callbacks_on_proxy(  # noqa: PLR0915
                         + CommonProxyErrors.missing_enterprise_package_docker.value
                     )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use ENTERPRISE BannedKeyword"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     raise Exception(
+                #         "Trying to use Banned Keywords"
+                #         + CommonProxyErrors.not_premium_user.value
+                #     )
 
                 banned_keywords_obj = _ENTERPRISE_BannedKeywords()
                 imported_list.append(banned_keywords_obj)

@@ -187,9 +187,10 @@ class BaseEmailLogger(CustomLogger):
         def get_custom_or_default(custom_value: Optional[str], default_value: str, field_name: str) -> str:
             if custom_value is not None:  # Only check premium if trying to use custom value
                 from litellm.proxy.proxy_server import premium_user
-                if premium_user is not True:
-                    unused_custom_fields.append(field_name)
-                    return default_value
+                # OPEN SOURCE: License checks disabled
+                # if premium_user is not True:
+                #     unused_custom_fields.append(field_name)
+                #     return default_value
                 return custom_value
             return default_value
 

@@ -24,10 +24,11 @@ class GoogleSecretManager(GCSBucketBase):
         """
         from litellm.proxy.proxy_server import premium_user
 
-        if premium_user is not True:
-            raise ValueError(
-                f"Google Secret Manager requires an Enterprise License {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         f"Google Secret Manager requires an Enterprise License {CommonProxyErrors.not_premium_user.value}"
+        #     )
         super().__init__()
         self.PROJECT_ID = os.environ.get("GOOGLE_SECRET_MANAGER_PROJECT_ID", None)
         if self.PROJECT_ID is None:

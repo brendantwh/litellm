@@ -339,11 +339,12 @@ class CustomGuardrail(CustomLogger):
         """
         from litellm.proxy.proxy_server import CommonProxyErrors, premium_user
 
-        if premium_user is not True:
-            verbose_logger.warning(
-                f"Trying to use premium guardrail without premium user {CommonProxyErrors.not_premium_user.value}"
-            )
-            return False
+        # OPEN SOURCE: License checks disabled - always return True
+        # if premium_user is not True:
+        #     verbose_logger.warning(
+        #         f"Trying to use premium guardrail without premium user {CommonProxyErrors.not_premium_user.value}"
+        #     )
+        #     return False
         return True
 
     def add_standard_logging_guardrail_information_to_request_data(

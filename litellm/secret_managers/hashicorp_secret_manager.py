@@ -58,10 +58,11 @@ class HashicorpSecretManager(BaseSecretManager):
             default_ttl=_refresh_interval
         )  # store in memory for 1 day
 
-        if premium_user is not True:
-            raise ValueError(
-                f"Hashicorp secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         f"Hashicorp secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
+        #     )
 
     def _verify_required_credentials_exist(self) -> None:
         """

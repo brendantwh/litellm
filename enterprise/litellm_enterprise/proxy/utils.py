@@ -27,9 +27,10 @@ def _should_block_robots():
     elif isinstance(_block_robots, str):
         block_robots = str_to_bool(_block_robots)
     if block_robots is True:
-        if premium_user is not True:
-            raise ValueError(
-                f"Blocking web crawlers is an enterprise feature. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         f"Blocking web crawlers is an enterprise feature. {CommonProxyErrors.not_premium_user.value}"
+        #     )
         return True
     return False

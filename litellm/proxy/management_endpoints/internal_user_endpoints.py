@@ -365,12 +365,13 @@ async def new_user(
         await _check_duplicate_user_email(data.user_email, prisma_client)
 
         # Check if license is over limit
-        total_users = await prisma_client.db.litellm_usertable.count()
-        if total_users and _license_check.is_over_limit(total_users=total_users):
-            raise HTTPException(
-                status_code=403,
-                detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
-            )
+        # OPEN SOURCE: License checks disabled
+        # total_users = await prisma_client.db.litellm_usertable.count()
+        # if total_users and _license_check.is_over_limit(total_users=total_users):
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
+        #     )
 
         data_json = data.json()  # type: ignore
         data_json = _update_internal_new_user_params(data_json, data)

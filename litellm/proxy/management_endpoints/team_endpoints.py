@@ -604,14 +604,15 @@ async def new_team(  # noqa: PLR0915
             raise HTTPException(status_code=500, detail={"error": "No db connected"})
 
         # Check if license is over limit
-        total_teams = await prisma_client.db.litellm_teamtable.count()
-        if total_teams and _license_check.is_team_count_over_limit(
-            team_count=total_teams
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
-            )
+        # OPEN SOURCE: License checks disabled
+        # total_teams = await prisma_client.db.litellm_teamtable.count()
+        # if total_teams and _license_check.is_team_count_over_limit(
+        #     team_count=total_teams
+        # ):
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail="License is over limit. Please contact support@berri.ai to upgrade your license.",
+        #     )
 
         if data.team_id is None:
             data.team_id = str(uuid.uuid4())

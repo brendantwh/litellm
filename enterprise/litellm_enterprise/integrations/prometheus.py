@@ -46,15 +46,16 @@ class PrometheusLogger(CustomLogger):
             # Always initialize label_filters, even for non-premium users
             self.label_filters = self._parse_prometheus_config()
 
-            if premium_user is not True:
-                verbose_logger.warning(
-                    f"🚨🚨🚨 Prometheus Metrics is on LiteLLM Enterprise\n🚨 {CommonProxyErrors.not_premium_user.value}"
-                )
-                self.litellm_not_a_premium_user_metric = Counter(
-                    name="litellm_not_a_premium_user_metric",
-                    documentation=f"🚨🚨🚨 Prometheus Metrics is on LiteLLM Enterprise. 🚨 {CommonProxyErrors.not_premium_user.value}",
-                )
-                return
+            # OPEN SOURCE: License checks disabled
+            # if premium_user is not True:
+            #     verbose_logger.warning(
+            #         f"🚨🚨🚨 Prometheus Metrics is on LiteLLM Enterprise\n🚨 {CommonProxyErrors.not_premium_user.value}"
+            #     )
+            #     self.litellm_not_a_premium_user_metric = Counter(
+            #         name="litellm_not_a_premium_user_metric",
+            #         documentation=f"🚨🚨🚨 Prometheus Metrics is on LiteLLM Enterprise. 🚨 {CommonProxyErrors.not_premium_user.value}",
+            #     )
+            #     return
 
             # Create metric factory functions
             self._counter_factory = self._create_metric_factory(Counter)
@@ -2228,10 +2229,11 @@ class PrometheusLogger(CustomLogger):
         from litellm.proxy._types import CommonProxyErrors
         from litellm.proxy.proxy_server import app
 
-        if premium_user is not True:
-            verbose_proxy_logger.warning(
-                f"Prometheus metrics are only available for premium users. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # OPEN SOURCE: License checks disabled
+        # if premium_user is not True:
+        #     verbose_proxy_logger.warning(
+        #         f"Prometheus metrics are only available for premium users. {CommonProxyErrors.not_premium_user.value}"
+        #     )
 
         # Create metrics ASGI app
         if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
