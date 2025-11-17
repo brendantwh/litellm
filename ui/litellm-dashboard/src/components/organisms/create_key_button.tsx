@@ -1094,6 +1094,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({
                         />
                       </div>
                     </AccordionBody>
+                    <Form.Item name="duration" hidden initialValue="">
+                      <Input />
+                    </Form.Item>
                   </Accordion>
                   <Accordion className="mt-4 mb-4">
                     <AccordionHeader>
