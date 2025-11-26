@@ -1,9 +1,9 @@
+import { KeyIcon, TrashIcon } from "@heroicons/react/outline";
 import { ColumnDef } from "@tanstack/react-table";
-import { Button, Badge, Icon } from "@tremor/react";
+import { Badge, Button, Icon } from "@tremor/react";
 import { Tooltip } from "antd";
-import { getProviderLogoAndName } from "../../provider_info_helpers";
 import { ModelData } from "../../model_dashboard/types";
-import { TrashIcon, KeyIcon } from "@heroicons/react/outline";
+import { getProviderLogoAndName } from "../../provider_info_helpers";
 
 export const columns = (
   userRole: string,
@@ -135,18 +135,25 @@ export const columns = (
     size: 160, // Fixed column width
     cell: ({ row }) => {
       const model = row.original;
+      const isConfigModel = !model.model_info?.db_model;
       const createdBy = model.model_info.created_by;
       const createdAt = model.model_info.created_at ? new Date(model.model_info.created_at).toLocaleDateString() : null;
 
       return (
         <div className="flex flex-col min-w-0 max-w-[160px]">
           {/* Created By - Primary */}
-          <div className="text-xs font-medium text-gray-900 truncate" title={createdBy || "Unknown"}>
-            {createdBy || "Unknown"}
+          <div
+            className="text-xs font-medium text-gray-900 truncate"
+            title={isConfigModel ? "Defined in config" : createdBy || "Unknown"}
+          >
+            {isConfigModel ? "Defined in config" : createdBy || "Unknown"}
           </div>
           {/* Created At - Secondary */}
-          <div className="text-xs text-gray-500 truncate mt-0.5" title={createdAt || "Unknown date"}>
-            {createdAt || "Unknown date"}
+          <div
+            className="text-xs text-gray-500 truncate mt-0.5"
+            title={isConfigModel ? "Config file" : createdAt || "Unknown date"}
+          >
+            {isConfigModel ? "-" : createdAt || "Unknown date"}
           </div>
         </div>
       );
@@ -300,21 +307,28 @@ export const columns = (
     cell: ({ row }) => {
       const model = row.original;
       const canEditModel = userRole === "Admin" || model.model_info?.created_by === userID;
+      const isConfigModel = !model.model_info?.db_model;
       return (
         <div className="flex items-center justify-end gap-2 pr-4">
-          <Tooltip title="Delete model">
-            <Icon
-              icon={TrashIcon}
-              size="sm"
-              onClick={() => {
-                if (canEditModel) {
-                  setSelectedModelId(model.model_info.id);
-                  setEditModel(false);
-                }
-              }}
-              className={!canEditModel ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:text-red-600"}
-            />
-          </Tooltip>
+          {isConfigModel ? (
+            <Tooltip title="Config model cannot be deleted on the dashboard. Please delete it from the config file.">
+              <Icon icon={TrashIcon} size="sm" className="opacity-50 cursor-not-allowed" />
+            </Tooltip>
+          ) : (
+            <Tooltip title="Delete model">
+              <Icon
+                icon={TrashIcon}
+                size="sm"
+                onClick={() => {
+                  if (canEditModel) {
+                    setSelectedModelId(model.model_info.id);
+                    setEditModel(false);
+                  }
+                }}
+                className={!canEditModel ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:text-red-600"}
+              />
+            </Tooltip>
+          )}
         </div>
       );
     },
