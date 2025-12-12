@@ -411,8 +411,8 @@ class ContentFilterGuardrail(CustomGuardrail):
         """
         Streaming hook to check each chunk as it's yielded.
 
-        This implementation checks each chunk individually and yields it immediately,
-        allowing for low-latency streaming with content filtering.
+        This implementation buffers content to handle patterns split across chunks
+        (e.g. "4242" + "4242..."). It maintains a sliding window overlap.
 
         Args:
             user_api_key_dict: User API key authentication
@@ -421,46 +421,114 @@ class ContentFilterGuardrail(CustomGuardrail):
 
         Yields:
             Checked and potentially masked chunks
-
-        Raises:
-            HTTPException: If chunk content should be blocked
         """
+        import copy
+
         verbose_proxy_logger.debug(
-            "ContentFilterGuardrail: Running streaming check (per-chunk mode)"
+            "ContentFilterGuardrail: Running streaming check (buffered mode)"
         )
 
-        # Process each chunk individually
-        async for chunk in response:
-            if isinstance(chunk, ModelResponseStream):
-                for choice in chunk.choices:
-                    if hasattr(choice, "delta") and choice.delta.content:
-                        if isinstance(choice.delta.content, str):
-                            # Check the chunk content using apply_guardrail
-                            try:
-                                guardrailed_inputs = await self.apply_guardrail(
-                                    inputs={"texts": [choice.delta.content]},
-                                    input_type="response",
-                                    request_data=request_data,
-                                )
-                                processed_texts = guardrailed_inputs.get("texts", [])
-                                processed_content = (
-                                    processed_texts[0]
-                                    if processed_texts
-                                    else choice.delta.content
-                                )
-                                if processed_content != choice.delta.content:
-                                    choice.delta.content = processed_content
-                                    verbose_proxy_logger.debug(
-                                        "ContentFilterGuardrail: Modified streaming chunk"
-                                    )
-                            except HTTPException as e:
-                                # If content should be blocked, raise immediately
-                                verbose_proxy_logger.warning(
-                                    f"ContentFilterGuardrail: Blocked streaming chunk: {e.detail}"
-                                )
-                                raise
+        # Buffer settings
+        # Keep enough chars to cover split patterns (CCs are ~19 chars)
+        OVERLAP_LENGTH = 30
+        buffer = ""
+        last_chunk_template: Optional[ModelResponseStream] = None
 
-            yield chunk
+        async for chunk in response:
+            # Pass through non-Standard chunks or those without choices
+            if not isinstance(chunk, ModelResponseStream) or not chunk.choices:
+                yield chunk
+                continue
+
+            # We assume single choice streaming for simplicity in guardrails
+            # Multi-choice streaming is complex with buffering; usually users use n=1
+            choice = chunk.choices[0]
+
+            # Save chunk as template for constructing new chunks
+            last_chunk_template = chunk
+
+            # Helper to check if this is a content chunk
+            content = None
+            if hasattr(choice, "delta") and choice.delta.content:
+                if isinstance(choice.delta.content, str):
+                    content = choice.delta.content
+
+            if content:
+                buffer += content
+
+                # If buffer is small, allow it to grow unless it's very long (latency trade-off)
+                # But we must yield if buffer > 2 * OVERLAP
+                if len(buffer) < OVERLAP_LENGTH:
+                    continue
+
+                # Process buffer
+                try:
+                    guardrailed_inputs = await self.apply_guardrail(
+                        inputs={"texts": [buffer]},
+                        input_type="response",
+                        request_data=request_data,
+                    )
+                    processed_buffer = guardrailed_inputs.get("texts", [])[0]
+                except HTTPException as e:
+                    verbose_proxy_logger.warning(
+                        f"ContentFilterGuardrail: Blocked streaming chunk: {e.detail}"
+                    )
+                    raise
+
+                # Determine what to yield vs keep
+                # We keep the last OVERLAP_LENGTH characters to handle split patterns
+                split_index = len(processed_buffer) - OVERLAP_LENGTH
+
+                # If guardrail reduced text (e.g. masking), processed_buffer might be smaller
+                if split_index > 0:
+                    to_yield = processed_buffer[:split_index]
+                    buffer = processed_buffer[split_index:]
+
+                    # Yield the safe part
+                    if to_yield:
+                        # Create new chunk with yielded content
+                        # We use the template.
+                        new_chunk = copy.deepcopy(last_chunk_template)
+                        if new_chunk.choices:
+                            new_chunk.choices[0].delta.content = to_yield
+                        yield new_chunk
+                else:
+                    # Buffer is still small (or became small after masking), keep it all
+                    buffer = processed_buffer
+            else:
+                # No content (e.g. finish_reason, or role, or tool_calls)
+                # If chunk has finish_reason, we MUST flush buffer
+                if choice.finish_reason:
+                    # Flush buffer
+                    if buffer:
+                        # Process one last time
+                        try:
+                            guardrailed_inputs = await self.apply_guardrail(
+                                inputs={"texts": [buffer]},
+                                input_type="response",
+                                request_data=request_data,
+                            )
+                            final_content = guardrailed_inputs.get("texts", [])[0]
+                            if final_content:
+                                new_chunk = copy.deepcopy(last_chunk_template)
+                                if new_chunk.choices:
+                                    new_chunk.choices[0].delta.content = final_content
+                                # Reset finish reason on this intermediate flush chunk?
+                                # Ideally yes, otherwise client thinks stream ended?
+                                # Actually, we should output this BEFORE the current 'chunk' which has finish_reason.
+                                # The current 'chunk' (last_chunk_template) HAS finish_reason.
+                                # We should remove finish_reason from the FLUSH chunk.
+                                if new_chunk.choices:
+                                    new_chunk.choices[0].finish_reason = None
+                                yield new_chunk
+                        except HTTPException:
+                            raise
+
+                    # Yield the original finish chunk (which has finish_reason)
+                    yield chunk
+                else:
+                    # Just some intermediate chunk (e.g. empty delta with role "assistant")
+                    yield chunk
 
         verbose_proxy_logger.debug("ContentFilterGuardrail: Streaming check completed")
 
