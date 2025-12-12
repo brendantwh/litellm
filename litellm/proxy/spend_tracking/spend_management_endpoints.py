@@ -2084,6 +2084,8 @@ async def view_spend_logs(  # noqa: PLR0915
                 query_type="find_all",
                 key_val={"key": "api_key", "value": hashed_token},
             )
+            if spend_log is None:
+                return []
             if isinstance(spend_log, list):
                 return spend_log
             else:
@@ -2094,6 +2096,8 @@ async def view_spend_logs(  # noqa: PLR0915
                 query_type="find_unique",
                 key_val={"key": "request_id", "value": request_id},
             )
+            if spend_log is None:
+                return []
             return [spend_log]
         elif user_id is not None:
             spend_log = await prisma_client.get_data(
@@ -2101,6 +2105,8 @@ async def view_spend_logs(  # noqa: PLR0915
                 query_type="find_all",
                 key_val={"key": "user", "value": user_id},
             )
+            if spend_log is None:
+                return []
             if isinstance(spend_log, list):
                 return spend_log
             else:
