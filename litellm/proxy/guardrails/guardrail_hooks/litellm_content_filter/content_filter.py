@@ -434,31 +434,68 @@ class ContentFilterGuardrail(CustomGuardrail):
         buffer = ""
         last_chunk_template: Optional[ModelResponseStream] = None
 
+        chunk_count = 0
         async for chunk in response:
+            chunk_count += 1
+            # Debug logging for chunk type to diagnose issues
+            if chunk_count == 1:
+                verbose_proxy_logger.debug(
+                    f"ContentFilterGuardrail: First chunk type: {type(chunk)}"
+                )
+
             # Pass through non-Standard chunks or those without choices
-            if not isinstance(chunk, ModelResponseStream) or not chunk.choices:
+            # Support both object and dict access for broader compatibility
+            is_valid_object = isinstance(chunk, ModelResponseStream) and chunk.choices
+            is_valid_dict = (
+                isinstance(chunk, dict) and "choices" in chunk and chunk["choices"]
+            )
+
+            if not is_valid_object and not is_valid_dict:
                 yield chunk
                 continue
 
             # We assume single choice streaming for simplicity in guardrails
-            # Multi-choice streaming is complex with buffering; usually users use n=1
-            choice = chunk.choices[0]
-
-            # Save chunk as template for constructing new chunks
-            last_chunk_template = chunk
+            if is_valid_object:
+                choice = chunk.choices[0]
+                # Save chunk as template
+                last_chunk_template = chunk
+                finish_reason = choice.finish_reason
+            else:
+                # Handle dict case
+                choice = chunk["choices"][0]
+                # We can't use a dict as a template for _create_chunk easily if we strictly assume ModelResponseStream elsewhere,
+                # but if the stream is dicts, we should probably output dicts.
+                # However, for safety in this guardrail, assuming objects if possible or just passing through if we can't handle it.
+                # But we MUST handle dicts if that's what's flowing.
+                # For now, if it's a dict, we'll try to treat it similarly but we need a template.
+                # If last_chunk_template is None, we might be in trouble if we need to synthesize chunks.
+                # Let's use the current dict as template.
+                last_chunk_template = chunk
+                finish_reason = choice.get("finish_reason")
 
             # Helper to check if this is a content chunk
             content = None
-            if hasattr(choice, "delta") and choice.delta.content:
-                if isinstance(choice.delta.content, str):
+            if hasattr(choice, "delta"):
+                # Object access
+                if choice.delta.content and isinstance(choice.delta.content, str):
                     content = choice.delta.content
+            elif isinstance(choice, dict) and "delta" in choice:
+                # Dict access
+                delta = choice["delta"]
+                if isinstance(delta, dict) and delta.get("content"):
+                    content = delta["content"]
+                elif hasattr(delta, "content") and delta.content: # Pydantic inside dict?
+                     content = delta.content
 
             if content:
                 buffer += content
 
-                # If buffer is small, allow it to grow unless it's very long (latency trade-off)
-                # But we must yield if buffer > 2 * OVERLAP
-                if len(buffer) < OVERLAP_LENGTH:
+                # Check if we should flush due to finish_reason co-occurring with content
+                should_flush_final = finish_reason is not None
+
+                # If buffer is small, allow it to grow unless it's very long
+                # But we must yield if buffer > OVERLAP or if we are finishing
+                if len(buffer) < OVERLAP_LENGTH and not should_flush_final:
                     continue
 
                 # Process buffer
@@ -476,32 +513,43 @@ class ContentFilterGuardrail(CustomGuardrail):
                     raise
 
                 # Determine what to yield vs keep
-                # We keep the last OVERLAP_LENGTH characters to handle split patterns
-                split_index = len(processed_buffer) - OVERLAP_LENGTH
+                if should_flush_final:
+                    # Flush EVERYTHING
+                    to_yield = processed_buffer
+                    buffer = ""  # Clear buffer
+                else:
+                    # Keep overlap
+                    split_index = len(processed_buffer) - OVERLAP_LENGTH
 
-                # If guardrail reduced text (e.g. masking), processed_buffer might be smaller
-                if split_index > 0:
-                    to_yield = processed_buffer[:split_index]
-                    buffer = processed_buffer[split_index:]
+                    if split_index > 0:
+                        to_yield = processed_buffer[:split_index]
+                        buffer = processed_buffer[split_index:]
+                    else:
+                        # Buffer is small
+                        buffer = processed_buffer
+                        to_yield = None
 
-                    # Yield the safe part
-                    if to_yield:
-                        # Create new chunk with yielded content
-                        # We use the template.
-                        new_chunk = copy.deepcopy(last_chunk_template)
+                # Yield the safe part
+                if to_yield:
+                    new_chunk = copy.deepcopy(last_chunk_template)
+                    if is_valid_object:
                         if new_chunk.choices:
                             new_chunk.choices[0].delta.content = to_yield
-                        yield new_chunk
-                else:
-                    # Buffer is still small (or became small after masking), keep it all
-                    buffer = processed_buffer
+                            if not should_flush_final:
+                                new_chunk.choices[0].finish_reason = None
+                    else:
+                        # Dict handling
+                        if new_chunk.get("choices"):
+                            new_chunk["choices"][0]["delta"]["content"] = to_yield
+                            if not should_flush_final:
+                                new_chunk["choices"][0]["finish_reason"] = None
+                    yield new_chunk
+
             else:
-                # No content (e.g. finish_reason, or role, or tool_calls)
-                # If chunk has finish_reason, we MUST flush buffer
-                if choice.finish_reason:
+                # No content (e.g. finish_reason only)
+                if finish_reason:
                     # Flush buffer
                     if buffer:
-                        # Process one last time
                         try:
                             guardrailed_inputs = await self.apply_guardrail(
                                 inputs={"texts": [buffer]},
@@ -511,23 +559,23 @@ class ContentFilterGuardrail(CustomGuardrail):
                             final_content = guardrailed_inputs.get("texts", [])[0]
                             if final_content:
                                 new_chunk = copy.deepcopy(last_chunk_template)
-                                if new_chunk.choices:
-                                    new_chunk.choices[0].delta.content = final_content
-                                # Reset finish reason on this intermediate flush chunk?
-                                # Ideally yes, otherwise client thinks stream ended?
-                                # Actually, we should output this BEFORE the current 'chunk' which has finish_reason.
-                                # The current 'chunk' (last_chunk_template) HAS finish_reason.
-                                # We should remove finish_reason from the FLUSH chunk.
-                                if new_chunk.choices:
-                                    new_chunk.choices[0].finish_reason = None
+                                if is_valid_object:
+                                    if new_chunk.choices:
+                                        new_chunk.choices[0].delta.content = final_content
+                                        new_chunk.choices[0].finish_reason = None
+                                else:
+                                    # Dict handling
+                                    if new_chunk.get("choices"):
+                                        new_chunk["choices"][0]["delta"]["content"] = final_content
+                                        new_chunk["choices"][0]["finish_reason"] = None
                                 yield new_chunk
                         except HTTPException:
                             raise
 
-                    # Yield the original finish chunk (which has finish_reason)
+                    # Yield the original finish chunk
                     yield chunk
                 else:
-                    # Just some intermediate chunk (e.g. empty delta with role "assistant")
+                    # Intermediate non-content chunk
                     yield chunk
 
         verbose_proxy_logger.debug("ContentFilterGuardrail: Streaming check completed")
