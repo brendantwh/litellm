@@ -1086,6 +1086,11 @@ class CustomStreamWrapper:
                         "provider_specific_fields"
                     ].items():
                         setattr(model_response, key, value)
+                    
+                    # Copy reasoning fields from provider_specific_fields to delta
+                    for reasoning_field in ["reasoning", "reasoning_content", "reasoning_details"]:
+                        if reasoning_field in anthropic_response_obj["provider_specific_fields"]:
+                            completion_obj[reasoning_field] = anthropic_response_obj["provider_specific_fields"][reasoning_field]
 
                 response_obj = cast(Dict[str, Any], anthropic_response_obj)
             elif self.model == "replicate" or self.custom_llm_provider == "replicate":
