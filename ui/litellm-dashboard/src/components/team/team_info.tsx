@@ -408,6 +408,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
           guardrails: values.guardrails || [],
           logging: values.logging_settings || [],
           ...(secretManagerSettings !== undefined ? { secret_manager_settings: secretManagerSettings } : {}),
+          ...(values.disable_global_guardrails !== undefined ? { disable_global_guardrails: values.disable_global_guardrails } : {}),
         },
         organization_id: values.organization_id,
       };
