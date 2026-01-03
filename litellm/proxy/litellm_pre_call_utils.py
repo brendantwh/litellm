@@ -1225,10 +1225,11 @@ def _enforced_params_check(
     )
     if enforced_params is None:
         return True
-    if enforced_params and premium_user is not True:
-        raise ValueError(
-            f"Enforced Params is an Enterprise feature. Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
-        )
+    # OPEN SOURCE: License check disabled - enforced params available to everyone
+    # if enforced_params and premium_user is not True:
+    #     raise ValueError(
+    #         f"Enforced Params is an Enterprise feature. Enforced Params: {enforced_params}. {CommonProxyErrors.not_premium_user.value}"
+    #     )
 
     for enforced_param in enforced_params:
         _enforced_params = enforced_param.split(".")

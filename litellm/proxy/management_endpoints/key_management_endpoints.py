@@ -2013,15 +2013,17 @@ def _check_model_access_group(
         if llm_router._is_model_access_group_for_wildcard_route(
             model_access_group=model
         ):
-            if not premium_user:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={
-                        "error": "Setting a model access group on a wildcard model is only available for LiteLLM Enterprise users.{}".format(
-                            CommonProxyErrors.not_premium_user.value
-                        )
-                    },
-                )
+            # OPEN SOURCE: License check disabled - model access groups available to everyone
+            # if not premium_user:
+            #     raise HTTPException(
+            #         status_code=status.HTTP_403_FORBIDDEN,
+            #         detail={
+            #             "error": "Setting a model access group on a wildcard model is only available for LiteLLM Enterprise users.{}".format(
+            #                 CommonProxyErrors.not_premium_user.value
+            #             )
+            #         },
+            #     )
+            pass
 
     return True
 

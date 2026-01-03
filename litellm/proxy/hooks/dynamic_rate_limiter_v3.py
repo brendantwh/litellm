@@ -100,13 +100,14 @@ class _PROXY_DynamicRateLimitHandlerV3(CustomLogger):
                 "Priority Reservation not set for the given priority."
             )
         elif priority is not None and litellm.priority_reservation is not None:
-            if os.getenv("LITELLM_LICENSE", None) is None:
-                verbose_proxy_logger.error(
-                    "PREMIUM FEATURE: Reserving tpm/rpm by priority is a premium feature. Please add a 'LITELLM_LICENSE' to your .env to enable this.\nGet a license: https://docs.litellm.ai/docs/proxy/enterprise."
-                )
-            else:
-                value = litellm.priority_reservation[priority]
-                weight = convert_priority_to_percent(value, model_info)
+            # OPEN SOURCE: License check disabled - priority reservation available to everyone
+            # if os.getenv("LITELLM_LICENSE", None) is None:
+            #     verbose_proxy_logger.error(
+            #         "PREMIUM FEATURE: Reserving tpm/rpm by priority is a premium feature. Please add a 'LITELLM_LICENSE' to your .env to enable this.\nGet a license: https://docs.litellm.ai/docs/proxy/enterprise."
+            #     )
+            # else:
+            value = litellm.priority_reservation[priority]
+            weight = convert_priority_to_percent(value, model_info)
         return weight
 
     def _get_priority_from_user_api_key_dict(

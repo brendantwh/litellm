@@ -197,13 +197,14 @@ def check_file_size_under_limit(
             file_content_size_in_mb,
             max_file_size_mb,
         )
-        if not premium_user:
-            raise ProxyException(
-                message=f"Tried setting max_file_size_mb for /audio/transcriptions. {CommonProxyErrors.not_premium_user.value}",
-                code=status.HTTP_400_BAD_REQUEST,
-                type="bad_request",
-                param="file",
-            )
+        # OPEN SOURCE: License check disabled - file size limits available to everyone
+        # if not premium_user:
+        #     raise ProxyException(
+        #         message=f"Tried setting max_file_size_mb for /audio/transcriptions. {CommonProxyErrors.not_premium_user.value}",
+        #         code=status.HTTP_400_BAD_REQUEST,
+        #         type="bad_request",
+        #         param="file",
+        #     )
         if file_content_size_in_mb > max_file_size_mb:
             raise ProxyException(
                 message=f"File size is too large. Please check your file size. Passed file size: {file_content_size_in_mb} MB. Max file size: {max_file_size_mb} MB",

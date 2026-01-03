@@ -2619,14 +2619,15 @@ class ProxyConfig:
                 ]
 
             ## check if user has set a premium feature in general_settings
-            if (
-                general_settings.get("enforced_params") is not None
-                and premium_user is not True
-            ):
-                raise ValueError(
-                    "Trying to use `enforced_params`"
-                    + CommonProxyErrors.not_premium_user.value
-                )
+            # OPEN SOURCE: License check disabled - enforced_params available to everyone
+            # if (
+            #     general_settings.get("enforced_params") is not None
+            #     and premium_user is not True
+            # ):
+            #     raise ValueError(
+            #         "Trying to use `enforced_params`"
+            #         + CommonProxyErrors.not_premium_user.value
+            #     )
 
             # check if litellm_license in general_settings
             if "litellm_license" in general_settings:
