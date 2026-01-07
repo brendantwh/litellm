@@ -71,84 +71,8 @@ from litellm.constants import (
     OPENAI_EMBEDDING_PARAMS,
     TOOL_CHOICE_OBJECT_TOKEN_COUNT,
 )
-from litellm.integrations.vector_store_integrations.base_vector_store import (
-    BaseVectorStore,
-)
 
-# Import cached imports utilities
-from litellm.litellm_core_utils.cached_imports import (
-    get_coroutine_checker,
-    get_litellm_logging_class,
-    get_set_callbacks,
-)
-from litellm.litellm_core_utils.core_helpers import (
-    get_litellm_metadata_from_kwargs,
-    map_finish_reason,
-    process_response_headers,
-)
-from litellm.litellm_core_utils.credential_accessor import CredentialAccessor
-from litellm.litellm_core_utils.dot_notation_indexing import (
-    delete_nested_value,
-    is_nested_path,
-)
-from litellm.litellm_core_utils.exception_mapping_utils import (
-    _get_response_headers,
-    exception_type,
-    get_error_message,
-)
-from litellm.litellm_core_utils.get_litellm_params import (
-    _get_base_model_from_litellm_call_metadata,
-    get_litellm_params,
-)
-from litellm.litellm_core_utils.get_llm_provider_logic import (
-    _is_non_openai_azure_model,
-    get_llm_provider,
-)
-from litellm.litellm_core_utils.get_supported_openai_params import (
-    get_supported_openai_params,
-)
-from litellm.litellm_core_utils.llm_request_utils import _ensure_extra_body_is_safe
-from litellm.litellm_core_utils.llm_response_utils.convert_dict_to_response import (
-    LiteLLMResponseObjectHandler,
-    _handle_invalid_parallel_tool_calls,
-    convert_to_model_response_object,
-    convert_to_streaming_response,
-    convert_to_streaming_response_async,
-)
-from litellm.litellm_core_utils.llm_response_utils.get_api_base import get_api_base
-from litellm.litellm_core_utils.llm_response_utils.get_formatted_prompt import (
-    get_formatted_prompt,
-)
-from litellm.litellm_core_utils.llm_response_utils.get_headers import (
-    get_response_headers,
-)
-from litellm.litellm_core_utils.llm_response_utils.response_metadata import (
-    ResponseMetadata,
-)
-from litellm.litellm_core_utils.prompt_templates.common_utils import (
-    _parse_content_for_reasoning,
-)
-from litellm.litellm_core_utils.redact_messages import (
-    LiteLLMLoggingObject,
-    redact_message_input_output_from_logging,
-)
-from litellm.litellm_core_utils.rules import Rules
-from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
-from litellm.llms.base_llm.google_genai.transformation import (
-    BaseGoogleGenAIGenerateContentConfig,
-)
-from litellm.llms.base_llm.ocr.transformation import BaseOCRConfig
-from litellm.llms.base_llm.search.transformation import BaseSearchConfig
-from litellm.llms.base_llm.text_to_speech.transformation import BaseTextToSpeechConfig
-from litellm.llms.bedrock.common_utils import BedrockModelInfo
-from litellm.llms.cohere.common_utils import CohereModelInfo
-from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
-from litellm.llms.mistral.ocr.transformation import MistralOCRConfig
-from litellm.router_utils.get_retry_from_policy import (
-    get_num_retries_from_retry_policy,
-    reset_retry_policy,
-)
-from litellm.secret_managers.main import get_secret
+
 
 _CachingHandlerResponse = None
 _LLMCachingHandler = None
@@ -225,10 +149,6 @@ def _get_cached_audio_utils():
         _audio_utils_module = litellm.litellm_core_utils.audio_utils.utils
     return _audio_utils_module
 
-from litellm.types.llms.anthropic import (
-    ANTHROPIC_API_ONLY_HEADERS,
-    AnthropicThinkingParam,
-)
 from litellm.types.llms.openai import (
     AllMessageValues,
     AllPromptValues,
@@ -239,7 +159,6 @@ from litellm.types.llms.openai import (
     OpenAITextCompletionUserMessage,
     OpenAIWebSearchOptions,
 )
-from litellm.types.rerank import RerankResponse
 from litellm.types.utils import FileTypes  # type: ignore
 from litellm.types.utils import (
     OPENAI_RESPONSE_HEADERS,
@@ -324,16 +243,7 @@ from typing import (
 
 from openai import OpenAIError as OriginalError
 
-from litellm.litellm_core_utils.llm_response_utils.response_metadata import (
-    update_response_metadata,
-)
-from litellm.litellm_core_utils.thread_pool_executor import executor
-from litellm.llms.base_llm.anthropic_messages.transformation import (
-    BaseAnthropicMessagesConfig,
-)
-from litellm.llms.base_llm.audio_transcription.transformation import (
-    BaseAudioTranscriptionConfig,
-)
+# These are lazy loaded via __getattr__
 from litellm.llms.base_llm.base_utils import (
     BaseLLMModelInfo,
     type_to_response_format_param,
@@ -346,29 +256,122 @@ if TYPE_CHECKING:
     from litellm.integrations.custom_logger import CustomLogger
     from litellm.llms.base_llm.files.transformation import BaseFilesConfig
     from litellm.proxy._types import AllowedModelRegion
+    # Type stubs for lazy-loaded functions to help mypy understand their types
+    # These imports allow mypy to understand the types when these are accessed via __getattr__
+    from litellm.litellm_core_utils.exception_mapping_utils import exception_type
+    from litellm.litellm_core_utils.get_llm_provider_logic import (
+        _is_non_openai_azure_model,
+        get_llm_provider,
+    )
+    from litellm.litellm_core_utils.get_supported_openai_params import (
+        get_supported_openai_params,
+    )
+    from litellm.litellm_core_utils.llm_response_utils.convert_dict_to_response import (
+        LiteLLMResponseObjectHandler,
+        _handle_invalid_parallel_tool_calls,
+        convert_to_model_response_object,
+        convert_to_streaming_response,
+        convert_to_streaming_response_async,
+    )
+    from litellm.litellm_core_utils.llm_response_utils.get_api_base import get_api_base
+    from litellm.litellm_core_utils.llm_response_utils.response_metadata import (
+        ResponseMetadata,
+    )
+    from litellm.litellm_core_utils.prompt_templates.common_utils import (
+        _parse_content_for_reasoning,
+    )
+    from litellm.litellm_core_utils.redact_messages import (
+        LiteLLMLoggingObject,
+        redact_message_input_output_from_logging,
+    )
+    from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
+    from litellm.llms.base_llm.google_genai.transformation import (
+        BaseGoogleGenAIGenerateContentConfig,
+    )
+    from litellm.llms.base_llm.ocr.transformation import BaseOCRConfig
+    from litellm.llms.base_llm.search.transformation import BaseSearchConfig
+    from litellm.llms.base_llm.text_to_speech.transformation import BaseTextToSpeechConfig
+    from litellm.llms.bedrock.common_utils import BedrockModelInfo
+    from litellm.llms.cohere.common_utils import CohereModelInfo
+    from litellm.llms.mistral.ocr.transformation import MistralOCRConfig
+    # Type stubs for lazy-loaded functions and classes
+    from litellm.litellm_core_utils.cached_imports import (
+        get_coroutine_checker,
+        get_litellm_logging_class,
+        get_set_callbacks,
+    )
+    from litellm.litellm_core_utils.core_helpers import (
+        get_litellm_metadata_from_kwargs,
+        map_finish_reason,
+        process_response_headers,
+    )
+    from litellm.litellm_core_utils.dot_notation_indexing import (
+        delete_nested_value,
+        is_nested_path,
+    )
+    from litellm.litellm_core_utils.get_litellm_params import (
+        _get_base_model_from_litellm_call_metadata,
+        get_litellm_params,
+    )
+    from litellm.litellm_core_utils.llm_request_utils import _ensure_extra_body_is_safe
+    from litellm.litellm_core_utils.llm_response_utils.get_formatted_prompt import (
+        get_formatted_prompt,
+    )
+    from litellm.litellm_core_utils.llm_response_utils.get_headers import (
+        get_response_headers,
+    )
+    from litellm.litellm_core_utils.llm_response_utils.response_metadata import (
+        update_response_metadata,
+    )
+    from litellm.litellm_core_utils.rules import Rules
+    from litellm.litellm_core_utils.thread_pool_executor import executor
+    from litellm.llms.base_llm.anthropic_messages.transformation import (
+        BaseAnthropicMessagesConfig,
+    )
+    from litellm.llms.base_llm.audio_transcription.transformation import (
+        BaseAudioTranscriptionConfig,
+    )
+    from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
+    from litellm.router_utils.get_retry_from_policy import (
+        get_num_retries_from_retry_policy,
+        reset_retry_policy,
+    )
+    from litellm.secret_managers.main import get_secret
+    # Type stubs for lazy-loaded config classes and types
+    from litellm.llms.base_llm.batches.transformation import BaseBatchesConfig
+    from litellm.llms.base_llm.containers.transformation import BaseContainerConfig
+    from litellm.llms.base_llm.embedding.transformation import BaseEmbeddingConfig
+    from litellm.llms.base_llm.image_edit.transformation import BaseImageEditConfig
+    from litellm.llms.base_llm.image_generation.transformation import (
+        BaseImageGenerationConfig,
+    )
+    from litellm.llms.base_llm.image_variations.transformation import (
+        BaseImageVariationConfig,
+    )
+    from litellm.llms.base_llm.passthrough.transformation import BasePassthroughConfig
+    from litellm.llms.base_llm.realtime.transformation import BaseRealtimeConfig
+    from litellm.llms.base_llm.rerank.transformation import BaseRerankConfig
+    from litellm.llms.base_llm.vector_store.transformation import BaseVectorStoreConfig
+    from litellm.llms.base_llm.vector_store_files.transformation import (
+        BaseVectorStoreFilesConfig,
+    )
+    from litellm.llms.base_llm.videos.transformation import BaseVideoConfig
+    from litellm.types.llms.anthropic import (
+        ANTHROPIC_API_ONLY_HEADERS,
+        AnthropicThinkingParam,
+    )
+    from litellm.types.rerank import RerankResponse
+    from litellm.types.llms.openai import (
+        ChatCompletionDeltaToolCallChunk,
+        ChatCompletionToolCallChunk,
+        ChatCompletionToolCallFunctionChunk,
+    )
+    from litellm.types.router import LiteLLM_Params
 
-from litellm.llms.base_llm.batches.transformation import BaseBatchesConfig
 from litellm.llms.base_llm.chat.transformation import BaseConfig
 from litellm.llms.base_llm.completion.transformation import BaseTextCompletionConfig
-from litellm.llms.base_llm.containers.transformation import BaseContainerConfig
-from litellm.llms.base_llm.embedding.transformation import BaseEmbeddingConfig
-from litellm.llms.base_llm.image_edit.transformation import BaseImageEditConfig
-from litellm.llms.base_llm.image_generation.transformation import (
-    BaseImageGenerationConfig,
-)
-from litellm.llms.base_llm.image_variations.transformation import (
-    BaseImageVariationConfig,
-)
-from litellm.llms.base_llm.passthrough.transformation import BasePassthroughConfig
-from litellm.llms.base_llm.realtime.transformation import BaseRealtimeConfig
-from litellm.llms.base_llm.rerank.transformation import BaseRerankConfig
 from litellm.llms.base_llm.responses.transformation import BaseResponsesAPIConfig
 from litellm.llms.base_llm.skills.transformation import BaseSkillsAPIConfig
-from litellm.llms.base_llm.vector_store.transformation import BaseVectorStoreConfig
-from litellm.llms.base_llm.vector_store_files.transformation import (
-    BaseVectorStoreFilesConfig,
-)
-from litellm.llms.base_llm.videos.transformation import BaseVideoConfig
 
 from ._logging import _is_debugging_on, verbose_logger
 from .caching.caching import (
@@ -396,12 +399,6 @@ from .exceptions import (
     UnprocessableEntityError,
     UnsupportedParamsError,
 )
-from .types.llms.openai import (
-    ChatCompletionDeltaToolCallChunk,
-    ChatCompletionToolCallChunk,
-    ChatCompletionToolCallFunctionChunk,
-)
-from .types.router import LiteLLM_Params
 
 if TYPE_CHECKING:
     from litellm import MockException
@@ -622,6 +619,9 @@ def load_credentials_from_list(kwargs: dict):
     """
     Updates kwargs with the credentials if credential_name in kwarg
     """
+    # Access CredentialAccessor via module to trigger lazy loading if needed
+    CredentialAccessor = getattr(sys.modules[__name__], 'CredentialAccessor')
+    
     credential_name = kwargs.get("litellm_credential_name")
     if credential_name and litellm.credential_list:
         credential_accessor = CredentialAccessor.get_credential_values(credential_name)
@@ -764,6 +764,9 @@ def function_setup(  # noqa: PLR0915
         ## LOGGING SETUP
         function_id: Optional[str] = kwargs["id"] if "id" in kwargs else None
 
+        ## LAZY LOAD COROUTINE CHECKER ##
+        get_coroutine_checker = getattr(sys.modules[__name__], 'get_coroutine_checker')
+
         ## DYNAMIC CALLBACKS ##
         dynamic_callbacks: Optional[List[Union[str, Callable, "CustomLogger"]]] = (
             kwargs.pop("callbacks", None)
@@ -810,6 +813,7 @@ def function_setup(  # noqa: PLR0915
                     + litellm.failure_callback
                 )
             )
+            get_set_callbacks = getattr(sys.modules[__name__], 'get_set_callbacks')
             get_set_callbacks()(callback_list=callback_list, function_id=function_id)
         ## ASYNC CALLBACKS
         if len(litellm.input_callback) > 0:
@@ -937,6 +941,7 @@ def function_setup(  # noqa: PLR0915
             elif kwargs.get("messages", None):
                 messages = kwargs["messages"]
             ### PRE-CALL RULES ###
+            Rules = getattr(sys.modules[__name__], 'Rules')
             if (
                 Rules.has_pre_call_rules()
                 and isinstance(messages, list)
@@ -1069,6 +1074,7 @@ def function_setup(  # noqa: PLR0915
             call_type=call_type,
         ):
             stream = True
+        get_litellm_logging_class = getattr(sys.modules[__name__], 'get_litellm_logging_class')
         logging_obj = get_litellm_logging_class()(  # Victim for object pool
             model=model,  # type: ignore
             messages=messages,
@@ -1152,6 +1158,8 @@ def _get_wrapper_num_retries(
     if num_retries is None:
         num_retries = litellm.num_retries
     if kwargs.get("retry_policy", None):
+        get_num_retries_from_retry_policy = getattr(sys.modules[__name__], 'get_num_retries_from_retry_policy')
+        reset_retry_policy = getattr(sys.modules[__name__], 'reset_retry_policy')
         retry_policy_num_retries = get_num_retries_from_retry_policy(
             exception=exception,
             retry_policy=kwargs.get("retry_policy"),
@@ -1179,6 +1187,7 @@ def _get_wrapper_timeout(
 
 
 def check_coroutine(value) -> bool:
+    get_coroutine_checker = getattr(sys.modules[__name__], 'get_coroutine_checker')
     return get_coroutine_checker().is_async_callable(value)
 
 
@@ -1337,6 +1346,7 @@ def post_call_processing(
 
 
 def client(original_function):  # noqa: PLR0915
+    Rules = getattr(sys.modules[__name__], 'Rules')
     rules_obj = Rules()
 
     @wraps(original_function)
@@ -1522,6 +1532,7 @@ def client(original_function):  # noqa: PLR0915
                     )
                 else:
                     # RETURN RESULT
+                    update_response_metadata = getattr(sys.modules[__name__], 'update_response_metadata')
                     update_response_metadata(
                         result=result,
                         logging_obj=logging_obj,
@@ -1565,6 +1576,7 @@ def client(original_function):  # noqa: PLR0915
             # Copy the current context to propagate it to the background thread
             # This is essential for OpenTelemetry span context propagation
             ctx = contextvars.copy_context()
+            executor = getattr(sys.modules[__name__], 'executor')
             executor.submit(
                 ctx.run,
                 logging_obj.success_handler,
@@ -1573,6 +1585,7 @@ def client(original_function):  # noqa: PLR0915
                 end_time,
             )
             # RETURN RESULT
+            update_response_metadata = getattr(sys.modules[__name__], 'update_response_metadata')
             update_response_metadata(
                 result=result,
                 logging_obj=logging_obj,
@@ -1589,6 +1602,8 @@ def client(original_function):  # noqa: PLR0915
                     kwargs.get("num_retries", None) or litellm.num_retries or None
                 )
                 if kwargs.get("retry_policy", None):
+                    get_num_retries_from_retry_policy = getattr(sys.modules[__name__], 'get_num_retries_from_retry_policy')
+                    reset_retry_policy = getattr(sys.modules[__name__], 'reset_retry_policy')
                     num_retries = get_num_retries_from_retry_policy(
                         exception=e,
                         retry_policy=kwargs.get("retry_policy"),
@@ -1760,6 +1775,7 @@ def client(original_function):  # noqa: PLR0915
                         chunks, messages=kwargs.get("messages", None)
                     )
                 else:
+                    update_response_metadata = getattr(sys.modules[__name__], 'update_response_metadata')
                     update_response_metadata(
                         result=result,
                         logging_obj=logging_obj,
@@ -1824,6 +1840,7 @@ def client(original_function):  # noqa: PLR0915
                     end_time=end_time,
                 )
 
+            update_response_metadata = getattr(sys.modules[__name__], 'update_response_metadata')
             update_response_metadata(
                 result=result,
                 logging_obj=logging_obj,
@@ -1899,6 +1916,7 @@ def client(original_function):  # noqa: PLR0915
             setattr(e, "timeout", timeout)
             raise e
 
+    get_coroutine_checker = getattr(sys.modules[__name__], 'get_coroutine_checker')
     is_coroutine = get_coroutine_checker().is_async_callable(original_function)
 
     # Return the appropriate wrapper based on the original function type
@@ -2259,6 +2277,7 @@ def supports_response_schema(
     """
     ## GET LLM PROVIDER ##
     try:
+        get_llm_provider = getattr(sys.modules[__name__], 'get_llm_provider')
         model, custom_llm_provider, _, _ = get_llm_provider(
             model=model, custom_llm_provider=custom_llm_provider
         )
@@ -2956,6 +2975,9 @@ def get_optional_params_embeddings(  # noqa: PLR0915
     additional_drop_params: Optional[List[str]] = None,
     **kwargs,
 ):
+    # Lazy load get_supported_openai_params
+    get_supported_openai_params = getattr(sys.modules[__name__], 'get_supported_openai_params')
+    
     # retrieve all parameters passed to the function
     passed_params = locals()
     custom_llm_provider = passed_params.pop("custom_llm_provider", None)
@@ -2963,6 +2985,8 @@ def get_optional_params_embeddings(  # noqa: PLR0915
 
     drop_params = passed_params.pop("drop_params", None)
     additional_drop_params = passed_params.pop("additional_drop_params", None)
+    # Remove function objects from passed_params to avoid JSON serialization errors
+    passed_params.pop("get_supported_openai_params", None)
 
     def _check_valid_arg(supported_params: Optional[list]):
         if supported_params is None:
@@ -3758,6 +3782,7 @@ def get_optional_params(  # noqa: PLR0915
                     message=f"{custom_llm_provider} does not support parameters: {list(unsupported_params.keys())}, for model={model}. To drop these, set `litellm.drop_params=True` or for proxy:\n\n`litellm_settings:\n drop_params: true`\n. \n If you want to use these params dynamically send allowed_openai_params={list(unsupported_params.keys())} in your request.",
                 )
 
+    get_supported_openai_params = getattr(sys.modules[__name__], 'get_supported_openai_params')
     supported_params = get_supported_openai_params(
         model=model, custom_llm_provider=custom_llm_provider
     )
@@ -4012,6 +4037,7 @@ def get_optional_params(  # noqa: PLR0915
             ),
         )
     elif custom_llm_provider == "bedrock":
+        BedrockModelInfo = getattr(sys.modules[__name__], 'BedrockModelInfo')
         bedrock_route = BedrockModelInfo.get_bedrock_route(model)
         bedrock_base_model = BedrockModelInfo.get_base_model(model)
         if bedrock_route == "converse" or bedrock_route == "converse_like":
@@ -4436,6 +4462,8 @@ def get_optional_params(  # noqa: PLR0915
 
     # Apply nested drops from additional_drop_params
     if additional_drop_params:
+        is_nested_path = getattr(sys.modules[__name__], 'is_nested_path')
+        delete_nested_value = getattr(sys.modules[__name__], 'delete_nested_value')
         nested_paths = [p for p in additional_drop_params if is_nested_path(p)]
         for path in nested_paths:
             optional_params = delete_nested_value(optional_params, path)
@@ -4485,6 +4513,7 @@ def add_provider_specific_params_to_optional_params(
             else:
                 processed_extra_body = initial_extra_body
 
+            _ensure_extra_body_is_safe = getattr(sys.modules[__name__], '_ensure_extra_body_is_safe')
             optional_params["extra_body"] = _ensure_extra_body_is_safe(
                 extra_body=processed_extra_body
             )
@@ -4895,6 +4924,7 @@ def get_max_tokens(model: str) -> Optional[int]:
                 return litellm.model_cost[model]["max_output_tokens"]
             elif "max_tokens" in litellm.model_cost[model]:
                 return litellm.model_cost[model]["max_tokens"]
+        get_llm_provider = getattr(sys.modules[__name__], 'get_llm_provider')
         model, custom_llm_provider, _, _ = get_llm_provider(model=model)
         if custom_llm_provider == "huggingface":
             max_tokens = _get_max_position_embeddings(model_name=model)
@@ -5015,6 +5045,7 @@ def _get_potential_model_names(
     if custom_llm_provider is None:
         # Get custom_llm_provider
         try:
+            get_llm_provider = getattr(sys.modules[__name__], 'get_llm_provider')
             split_model, custom_llm_provider, _, _ = get_llm_provider(model=model)
         except Exception:
             split_model = model
@@ -5737,6 +5768,7 @@ def validate_environment(  # noqa: PLR0915
         }
     ## EXTRACT LLM PROVIDER - if model name provided
     try:
+        get_llm_provider = getattr(sys.modules[__name__], 'get_llm_provider')
         _, custom_llm_provider, _, _ = get_llm_provider(model=model)
     except Exception:
         custom_llm_provider = None
@@ -6299,6 +6331,7 @@ def register_prompt_template(
     complete_model = model
     potential_models = [complete_model]
     try:
+        get_llm_provider = getattr(sys.modules[__name__], 'get_llm_provider')
         model = get_llm_provider(model=model)[0]
         potential_models.append(model)
     except Exception:
@@ -6384,6 +6417,7 @@ class TextCompletionStreamWrapper:
         except StopIteration:
             raise StopIteration
         except Exception as e:
+            exception_type = getattr(sys.modules[__name__], 'exception_type')
             raise exception_type(
                 model=self.model,
                 custom_llm_provider=self.custom_llm_provider or "",
@@ -6876,6 +6910,8 @@ def get_valid_models(
         ################################
         # init litellm_params
         #################################
+        from litellm.types.router import LiteLLM_Params
+        
         if litellm_params is None:
             litellm_params = LiteLLM_Params(model="")
         if api_key is not None:
@@ -7005,14 +7041,14 @@ def _get_base_model_from_metadata(model_call_details=None):
             return _base_model
         metadata = litellm_params.get("metadata", {})
 
-        base_model_from_metadata = _get_base_model_from_litellm_call_metadata(
-            metadata=metadata
-        )
+        _get_base_model_from_litellm_call_metadata = getattr(sys.modules[__name__], '_get_base_model_from_litellm_call_metadata')
+        base_model_from_metadata = _get_base_model_from_litellm_call_metadata(metadata=metadata)
         if base_model_from_metadata is not None:
             return base_model_from_metadata
 
         # Also check litellm_metadata (used by Responses API and other generic API calls)
         litellm_metadata = litellm_params.get("litellm_metadata", {})
+        _get_base_model_from_litellm_call_metadata = getattr(sys.modules[__name__], '_get_base_model_from_litellm_call_metadata')
         return _get_base_model_from_litellm_call_metadata(metadata=litellm_metadata)
     return None
 
@@ -7424,6 +7460,7 @@ class ProviderConfigManager:
             litellm.LlmProviders.COHERE_CHAT == provider
             or litellm.LlmProviders.COHERE == provider
         ):
+            CohereModelInfo = getattr(sys.modules[__name__], 'CohereModelInfo')
             route = CohereModelInfo.get_cohere_route(model)
             if route == "v2":
                 return litellm.CohereV2ChatConfig()
@@ -7484,6 +7521,8 @@ class ProviderConfigManager:
             return litellm.CompactifAIChatConfig()
         elif litellm.LlmProviders.GITHUB_COPILOT == provider:
             return litellm.GithubCopilotConfig()
+        elif litellm.LlmProviders.GIGACHAT == provider:
+            return litellm.GigaChatConfig()
         elif litellm.LlmProviders.RAGFLOW == provider:
             return litellm.RAGFlowConfig()
         elif (
@@ -7679,6 +7718,8 @@ class ProviderConfigManager:
             return litellm.CometAPIEmbeddingConfig()
         elif litellm.LlmProviders.GITHUB_COPILOT == provider:
             return litellm.GithubCopilotEmbeddingConfig()
+        elif litellm.LlmProviders.GIGACHAT == provider:
+            return litellm.GigaChatEmbeddingConfig()
         elif litellm.LlmProviders.SAGEMAKER == provider:
             from litellm.llms.sagemaker.embedding.transformation import (
                 SagemakerEmbeddingConfig,
@@ -8274,6 +8315,7 @@ class ProviderConfigManager:
 
             return get_vertex_ai_ocr_config(model=model)
         
+        MistralOCRConfig = getattr(sys.modules[__name__], 'MistralOCRConfig')
         PROVIDER_TO_CONFIG_MAP = {
             litellm.LlmProviders.MISTRAL: MistralOCRConfig,
         }
@@ -8414,6 +8456,7 @@ def get_end_user_id_for_cost_tracking(
 
     service_type: "litellm_logging" or "prometheus" - used to allow prometheus only disable cost tracking.
     """
+    get_litellm_metadata_from_kwargs = getattr(sys.modules[__name__], 'get_litellm_metadata_from_kwargs')
     _metadata = cast(
         dict, get_litellm_metadata_from_kwargs(dict(litellm_params=litellm_params))
     )
@@ -8705,16 +8748,16 @@ def should_run_mock_completion(
     return False
 
 
-# Re-export encoding from main.py for backward compatibility
-# This allows tests to import: from litellm.utils import encoding
-# We use a lazy import to avoid loading main.py at utils.py import time
 def __getattr__(name: str) -> Any:
-    """Lazy import handler for utils module"""
-    if name == "encoding":
-        # Cache it in the module's __dict__ for subsequent accesses
-        import sys
-
-        from litellm.main import encoding as _encoding
-        sys.modules[__name__].__dict__["encoding"] = _encoding
-        return _encoding
+    """Lazy import handler for utils module with cached registry for improved performance."""
+    # Use cached registry from _lazy_imports instead of importing tuples every time
+    from litellm._lazy_imports import _get_lazy_import_registry
+    
+    registry = _get_lazy_import_registry()
+    
+    # Check if name is in registry and call the cached handler function
+    if name in registry:
+        handler_func = registry[name]
+        return handler_func(name)
+    
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
