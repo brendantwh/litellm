@@ -10,7 +10,6 @@ on:
         default: "main"
       tag:
         description: "The tag version you want to build"
-        type: string
         required: true
       release_type:
         description: "The release type you want to build. Can be 'latest', 'stable', 'dev', 'rc'"
