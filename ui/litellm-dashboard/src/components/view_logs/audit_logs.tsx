@@ -27,7 +27,7 @@ export default function AuditLogs({
   token,
   accessToken,
   isActive,
-  premiumUser,
+  premiumUser = true,
   allTeams,
 }: AuditLogsProps) {
   const [startTime, setStartTime] = useState<string>(moment().subtract(24, "hours").format("YYYY-MM-DDTHH:mm"));

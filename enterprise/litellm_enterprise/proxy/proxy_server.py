@@ -27,8 +27,10 @@ class EnterpriseProxyConfig:
         from litellm.proxy.proxy_server import premium_user
 
         docs_description: Optional[str] = None
-        if premium_user:
-            # check if premium_user has custom_docs_description
-            docs_description = os.getenv("DOCS_DESCRIPTION")
+        # OPEN SOURCE: License check disabled
+        # if premium_user:
+        #     # check if premium_user has custom_docs_description
+        #     docs_description = os.getenv("DOCS_DESCRIPTION")
+        docs_description = os.getenv("DOCS_DESCRIPTION")
 
         return docs_description

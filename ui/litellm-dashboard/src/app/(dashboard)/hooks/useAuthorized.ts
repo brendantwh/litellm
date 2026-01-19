@@ -71,7 +71,8 @@ const useAuthorized = () => {
     userId: decoded?.user_id ?? null,
     userEmail: decoded?.user_email ?? null,
     userRole: formatUserRole(decoded?.user_role ?? null),
-    premiumUser: decoded?.premium_user ?? null,
+    // OPEN SOURCE: License check disabled
+    premiumUser: true,
     disabledPersonalKeyCreation: decoded?.disabled_non_admin_personal_key_creation ?? null,
     showSSOBanner: decoded?.login_method === "username_password",
   };

@@ -62,7 +62,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   accessToken,
   userID,
   showSSOBanner,
-  premiumUser,
+  premiumUser = true,
   proxySettings,
   userRole,
 }) => {

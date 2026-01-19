@@ -42,7 +42,7 @@ const AddPassThroughEndpoint: React.FC<AddFallbacksProps> = ({
   accessToken,
   setPassThroughItems,
   passThroughItems,
-  premiumUser = false,
+  premiumUser = true,
 }) => {
   const [form] = Form.useForm();
   const [isModalVisible, setIsModalVisible] = useState(false);

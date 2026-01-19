@@ -52,7 +52,7 @@ const TeamsView: React.FC<TeamProps> = ({
   userID,
   userRole,
   organizations,
-  premiumUser = false,
+  premiumUser = true,
 }) => {
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [showFilters, setShowFilters] = useState(false);

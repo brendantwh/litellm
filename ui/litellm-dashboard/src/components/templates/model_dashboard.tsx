@@ -126,7 +126,7 @@ const OldModelDashboard: React.FC<ModelDashboardProps> = ({
   modelData = { data: [] },
   keys,
   setModelData,
-  premiumUser,
+  premiumUser = true,
   teams,
 }) => {
   const [addModelForm] = Form.useForm();

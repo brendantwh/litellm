@@ -13,7 +13,7 @@ interface EmailSettingsProps {
   alerts: any[];
 }
 
-const EmailSettings: React.FC<EmailSettingsProps> = ({ accessToken, premiumUser, alerts }) => {
+const EmailSettings: React.FC<EmailSettingsProps> = ({ accessToken, premiumUser = true, alerts }) => {
   const handleSaveEmailSettings = async () => {
     if (!accessToken) {
       return;

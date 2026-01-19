@@ -79,7 +79,7 @@ export function KeyEditView({
   accessToken,
   userID,
   userRole,
-  premiumUser = false,
+  premiumUser = true,
 }: KeyEditViewProps) {
   const [form] = Form.useForm();
   const [promptsList, setPromptsList] = useState<string[]>([]);

@@ -175,7 +175,7 @@ const Teams: React.FC<TeamProps> = ({
   userID,
   userRole,
   organizations,
-  premiumUser = false,
+  premiumUser = true,
 }) => {
   console.log(`organizations: ${JSON.stringify(organizations)}`);
   const { data: organizationsData } = useOrganizations();

@@ -21,10 +21,11 @@ class EnterpriseCustomGuardrailHelper:
         from litellm.proxy._types import CommonProxyErrors
         from litellm.proxy.proxy_server import premium_user
 
-        if not premium_user:
-            raise Exception(
-                f"Setting tag based guardrail modes is only available in litellm-enterprise. {CommonProxyErrors.not_premium_user.value}."
-            )
+        # OPEN SOURCE: License checks disabled
+        # if not premium_user:
+        #     raise Exception(
+        #         f"Setting tag based guardrail modes is only available in litellm-enterprise. {CommonProxyErrors.not_premium_user.value}."
+        #     )
 
         if event_hook is None or not isinstance(event_hook, Mode):
             return None

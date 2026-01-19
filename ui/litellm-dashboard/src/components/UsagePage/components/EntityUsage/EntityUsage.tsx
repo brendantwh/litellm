@@ -86,7 +86,7 @@ interface EntityUsageProps {
   dateValue: DateRangePickerValue;
 }
 
-const EntityUsage: React.FC<EntityUsageProps> = ({ accessToken, entityType, entityId, entityList, dateValue }) => {
+const EntityUsage: React.FC<EntityUsageProps> = ({ accessToken, entityType, entityId, entityList, dateValue, premiumUser = true }) => {
   const [spendData, setSpendData] = useState<EntitySpendData>({
     results: [],
     metadata: {

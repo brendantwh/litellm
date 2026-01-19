@@ -63,7 +63,7 @@ const PassThroughInfoView: React.FC<PassThroughInfoProps> = ({
   onClose,
   accessToken,
   isAdmin,
-  premiumUser = false,
+  premiumUser = true,
   onEndpointUpdated,
 }) => {
   const [endpointData, setEndpointData] = useState<PassThroughEndpoint | null>(initialEndpointData);

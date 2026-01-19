@@ -61,7 +61,8 @@ interface UsagePageProps {
 }
 
 const UsagePage: React.FC<UsagePageProps> = ({ teams, organizations }) => {
-  const { accessToken, userRole, userId: userID, premiumUser } = useAuthorized();
+  const { accessToken, userRole, userId: userID } = useAuthorized();
+  const premiumUser = true;
   const [userSpendData, setUserSpendData] = useState<{
     results: DailyData[];
     metadata: any;

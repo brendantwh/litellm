@@ -93,7 +93,9 @@ class EnterpriseCallbackControls:
             verbose_logger.debug("Dynamic callback disabling is disabled by admin via litellm.allow_dynamic_callback_disabling")
             return False
         
-        if premium_user:
-            return True
-        verbose_logger.warning(f"Disabling callbacks using request headers is an enterprise feature. {CommonProxyErrors.not_premium_user.value}")
-        return False
+        # OPEN SOURCE: License check disabled
+        # if premium_user:
+        #     return True
+        # verbose_logger.warning(f"Disabling callbacks using request headers is an enterprise feature. {CommonProxyErrors.not_premium_user.value}")
+        # return False
+        return True

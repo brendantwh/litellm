@@ -42,7 +42,7 @@ const Navbar: React.FC<NavbarProps> = ({
   userID,
   userEmail,
   userRole,
-  premiumUser,
+  premiumUser = true,
   proxySettings,
   setProxySettings,
   accessToken,

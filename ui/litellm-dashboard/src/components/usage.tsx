@@ -132,7 +132,7 @@ const isAdminOrAdminViewer = (role: string | null): boolean => {
   return role === "Admin" || role === "Admin Viewer";
 };
 
-const UsagePage: React.FC<UsagePageProps> = ({ accessToken, token, userRole, userID, keys, premiumUser }) => {
+const UsagePage: React.FC<UsagePageProps> = ({ accessToken, token, userRole, userID, keys, premiumUser = true }) => {
   const currentDate = new Date();
   const [keySpendData, setKeySpendData] = useState<any[]>([]);
   const [topKeys, setTopKeys] = useState<any[]>([]);

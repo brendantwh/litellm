@@ -15,7 +15,7 @@ interface ViewKeyTableProps {
   data: KeyResponse[] | null;
   setData: (keys: KeyResponse[]) => void;
   teams: Team[] | null;
-  premiumUser: boolean;
+  premiumUser?: boolean;
   currentOrg: Organization | null;
   organizations: Organization[] | null;
   setCurrentOrg: React.Dispatch<React.SetStateAction<Organization | null>>;

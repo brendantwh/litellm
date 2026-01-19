@@ -24,7 +24,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   handleInputChange,
   handleResetField,
   handleSubmit,
-  premiumUser,
+  premiumUser = true,
 }) => {
   const [form] = Form.useForm();
 
