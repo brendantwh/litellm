@@ -83,6 +83,11 @@ class UserAPIKeyAuthExceptionHandler:
                 extra={"requester_ip": requester_ip},
             )
 
+            # Add requester IP to request_data metadata for OTEL/callbacks
+            if "metadata" not in request_data:
+                request_data["metadata"] = {}
+            request_data["metadata"]["requester_ip_address"] = requester_ip
+
             # Log this exception to OTEL, Datadog etc
             user_api_key_dict = UserAPIKeyAuth(
                 parent_otel_span=parent_otel_span,
