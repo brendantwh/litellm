@@ -55,18 +55,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@edfb0fe6204400c56fbfd3feba3fe9ad1adfa345
 
-      # First build the non_root base image
-      - name: Build non_root base image
+      # Build and push non_root base image first
+      - name: Build and push non_root base image
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
           context: .
           file: ./docker/Dockerfile.non_root
-          push: false
-          load: true
-          tags: litellm-non-root:local
-          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/litellm-non-root:${{ github.event.inputs.tag || 'latest' }}
+          platforms: linux/amd64,linux/arm64
 
-      # Build and push cloud_run image using local base
+      # Build and push cloud_run image using pushed base
       - name: Build and push Cloud Run Docker image
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
         with:
@@ -74,7 +73,7 @@ jobs:
           file: ./docker/Dockerfile.cloud_run
           push: true
           build-args: |
-            BASE_IMAGE=litellm-non-root:local
+            BASE_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/litellm-non-root:${{ github.event.inputs.tag || 'latest' }}
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/litellm-cloud-run:${{ github.event.inputs.tag || 'latest' }}
           labels: ${{ steps.meta-cloud-run.outputs.labels }}
           platforms: linux/amd64,linux/arm64
