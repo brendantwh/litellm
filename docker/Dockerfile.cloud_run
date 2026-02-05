@@ -1,0 +1,23 @@
+# Cloud Run optimized image with config fetching support
+# Extends the non_root image with curl for fetching remote configs
+
+ARG BASE_IMAGE=ghcr.io/berriai/litellm:main-stable
+
+FROM $BASE_IMAGE
+
+USER root
+
+# Install curl for fetching remote config files
+RUN apk add --no-cache curl
+
+# Copy custom entrypoint
+COPY docker/cloud_run_entrypoint.sh /app/docker/cloud_run_entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker/cloud_run_entrypoint.sh && \
+    chmod +x /app/docker/cloud_run_entrypoint.sh
+
+USER nobody
+
+EXPOSE 4000/tcp
+
+ENTRYPOINT ["/app/docker/cloud_run_entrypoint.sh"]
+CMD ["--port", "4000"]

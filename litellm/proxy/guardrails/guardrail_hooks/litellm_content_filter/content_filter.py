@@ -198,6 +198,15 @@ class ContentFilterGuardrail(CustomGuardrail):
         for pattern_config in normalized_patterns:
             self._add_pattern(pattern_config)
 
+        # Warn if using during_call with MASK action (unstable)
+        if self.event_hook == GuardrailEventHooks.during_call and any(
+            p["action"] == ContentFilterAction.MASK for p in self.compiled_patterns
+        ):
+            verbose_proxy_logger.warning(
+                f"ContentFilterGuardrail '{self.guardrail_name}': 'during_call' mode with 'MASK' action is unstable due to race conditions. "
+                "Use 'pre_call' mode for reliable request masking."
+            )
+
         # Load blocked words - always initialize as dict
         self.blocked_words: Dict[str, Tuple[ContentFilterAction, Optional[str]]] = {}
         for word in normalized_blocked_words:
@@ -905,11 +914,15 @@ class ContentFilterGuardrail(CustomGuardrail):
                 elif isinstance(e.detail, str):
                     e.detail = e.detail + " (Image description): " + description
                 else:
-                    e.detail = "Content blocked: Image description detected" + description
+                    e.detail = (
+                        "Content blocked: Image description detected" + description
+                    )
                 raise e
 
     def _count_masked_entities(
-        self, detections: List[ContentFilterDetection], masked_entity_count: Dict[str, int]
+        self,
+        detections: List[ContentFilterDetection],
+        masked_entity_count: Dict[str, int],
     ) -> None:
         """
         Count masked entities by type from detections.
@@ -964,9 +977,11 @@ class ContentFilterGuardrail(CustomGuardrail):
             dict(detection) for detection in detections
         ]
         if status != "success":
-            guardrail_json_response = exception_str if exception_str else [
-                dict(detection) for detection in detections
-            ]
+            guardrail_json_response = (
+                exception_str
+                if exception_str
+                else [dict(detection) for detection in detections]
+            )
 
         self.add_standard_logging_guardrail_information_to_request_data(
             guardrail_provider=self.guardrail_provider,
