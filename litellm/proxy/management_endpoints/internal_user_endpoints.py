@@ -1918,6 +1918,11 @@ async def get_user_daily_activity(
     page_size: int = fastapi.Query(
         default=50, description="Items per page", ge=1, le=1000
     ),
+    timezone: Optional[int] = fastapi.Query(
+        default=None,
+        description="Timezone offset in minutes from UTC (e.g., 480 for PST). "
+        "Matches JavaScript's Date.getTimezoneOffset() convention.",
+    ),
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> SpendAnalyticsPaginatedResponse:
     """
@@ -1967,6 +1972,7 @@ async def get_user_daily_activity(
             api_key=api_key,
             page=page,
             page_size=page_size,
+            timezone_offset_minutes=timezone,
         )
 
     except Exception as e:
@@ -2003,6 +2009,11 @@ async def get_user_daily_activity_aggregated(
         default=None,
         description="Filter by specific API key",
     ),
+    timezone: Optional[int] = fastapi.Query(
+        default=None,
+        description="Timezone offset in minutes from UTC (e.g., 480 for PST). "
+        "Matches JavaScript's Date.getTimezoneOffset() convention.",
+    ),
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ) -> SpendAnalyticsPaginatedResponse:
     """
@@ -2038,6 +2049,7 @@ async def get_user_daily_activity_aggregated(
             end_date=end_date,
             model=model,
             api_key=api_key,
+            timezone_offset_minutes=timezone,
         )
 
     except Exception as e:
