@@ -15,6 +15,12 @@ set -e
 #
 #   AUTH_HEADER         - Optional auth header for all fetches (e.g., "Authorization: Bearer token")
 #
+#   Backblaze B2 auth (optional):
+#   BACKBLAZE_KEY_ID / B2_KEY_ID                       - Backblaze application key ID
+#   BACKBLAZE_APPLICATION_KEY / B2_APPLICATION_KEY     - Backblaze application key
+#   BACKBLAZE_AUTH_URL                                 - Override auth endpoint
+#                                                        (default: https://api.backblazeb2.com/b2api/v2/b2_authorize_account)
+#
 # Example usage:
 #   docker run \
 #     -e LITELLM_CONFIG_URL="https://storage.googleapis.com/bucket/config.yaml" \
@@ -31,9 +37,59 @@ set -e
 #         custom_handler: custom_handler.my_custom_llm
 
 CONFIG_DIR="${CONFIG_DIR:-/app/config}"
+BACKBLAZE_AUTH_URL="${BACKBLAZE_AUTH_URL:-https://api.backblazeb2.com/b2api/v2/b2_authorize_account}"
+BACKBLAZE_KEY_ID="${BACKBLAZE_KEY_ID:-${B2_KEY_ID:-}}"
+BACKBLAZE_APPLICATION_KEY="${BACKBLAZE_APPLICATION_KEY:-${B2_APPLICATION_KEY:-}}"
+BACKBLAZE_AUTH_HEADER=""
+BACKBLAZE_DOWNLOAD_URL=""
 
 # Create config directory
 mkdir -p "$CONFIG_DIR" 2>/dev/null || true
+
+# Extract string field from a small JSON payload (no jq dependency)
+extract_json_field() {
+    json_payload="$1"
+    field_name="$2"
+    printf '%s' "$json_payload" | tr -d '\n' | sed -n "s/.*\"${field_name}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p"
+}
+
+# Determine whether URL is likely a Backblaze B2 file URL
+is_backblaze_url() {
+    url="$1"
+
+    if [ -n "$BACKBLAZE_DOWNLOAD_URL" ] && [ "${url#"$BACKBLAZE_DOWNLOAD_URL"/}" != "$url" ]; then
+        return 0
+    fi
+
+    case "$url" in
+        *backblazeb2.com/*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Optionally authorize with Backblaze B2 and reuse the auth token for file downloads
+if [ -n "$BACKBLAZE_KEY_ID" ] || [ -n "$BACKBLAZE_APPLICATION_KEY" ]; then
+    if [ -z "$BACKBLAZE_KEY_ID" ] || [ -z "$BACKBLAZE_APPLICATION_KEY" ]; then
+        echo "Both BACKBLAZE_KEY_ID (or B2_KEY_ID) and BACKBLAZE_APPLICATION_KEY (or B2_APPLICATION_KEY) must be set" >&2
+        exit 1
+    fi
+
+    echo "Authorizing with Backblaze B2..."
+    backblaze_auth_response=$(curl -fsSL -u "${BACKBLAZE_KEY_ID}:${BACKBLAZE_APPLICATION_KEY}" "$BACKBLAZE_AUTH_URL")
+    backblaze_auth_token=$(extract_json_field "$backblaze_auth_response" "authorizationToken")
+    BACKBLAZE_DOWNLOAD_URL=$(extract_json_field "$backblaze_auth_response" "downloadUrl")
+
+    if [ -z "$backblaze_auth_token" ]; then
+        echo "Failed to read Backblaze authorizationToken from auth response" >&2
+        exit 1
+    fi
+
+    BACKBLAZE_AUTH_HEADER="Authorization: $backblaze_auth_token"
+fi
 
 # Helper function to fetch a file
 fetch_file() {
@@ -42,6 +98,8 @@ fetch_file() {
     echo "Fetching $url -> $dest"
     if [ -n "$AUTH_HEADER" ]; then
         curl -fsSL -H "$AUTH_HEADER" "$url" -o "$dest"
+    elif [ -n "$BACKBLAZE_AUTH_HEADER" ] && is_backblaze_url "$url"; then
+        curl -fsSL -H "$BACKBLAZE_AUTH_HEADER" "$url" -o "$dest"
     else
         curl -fsSL "$url" -o "$dest"
     fi
