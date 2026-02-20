@@ -362,6 +362,22 @@ class PostHogLogger(CustomBatchLogger):
         end_user = self._safe_get(standard_logging_object, "end_user")
         if end_user:
             return str(end_user)
+
+        # Fallback to the proxy key's metadata settings (user_id or end_user)
+        key_metadata = self._safe_get(metadata, "user_api_key_auth_metadata")
+        if key_metadata and isinstance(key_metadata, dict):
+            key_user_id = key_metadata.get("user_id")
+            if key_user_id:
+                return str(key_user_id)
+            key_end_user = key_metadata.get("end_user")
+            if key_end_user:
+                return str(key_end_user)
+
+        # Fallback to the proxy key's alias/name
+        user_api_key_alias = self._safe_get(metadata, "user_api_key_alias")
+        if user_api_key_alias:
+            return str(user_api_key_alias)
+
         trace_id = self._safe_get(standard_logging_object, "trace_id")
         if trace_id:
             return str(trace_id)
