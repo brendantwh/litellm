@@ -157,7 +157,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
   is_proxy_admin,
   userModels,
   editTeam,
-  premiumUser = false,
+  premiumUser = true,
   onUpdate,
 }) => {
   const [teamData, setTeamData] = useState<TeamData | null>(null);
@@ -1066,11 +1066,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                     <Form.Item
                       label="Secret Manager Settings"
                       name="secret_manager_settings"
-                      help={
-                        premiumUser
-                          ? "Enter secret manager configuration as a JSON object."
-                          : "Premium feature - Upgrade to manage secret manager settings."
-                      }
+                      help="Enter secret manager configuration as a JSON object."
                       rules={[
                         {
                           validator: async (_, value) => {
@@ -1090,7 +1086,7 @@ const TeamInfoView: React.FC<TeamInfoProps> = ({
                       <Input.TextArea
                         rows={6}
                         placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
-                        disabled={!premiumUser}
+                        disabled={false}
                       />
                     </Form.Item>
 

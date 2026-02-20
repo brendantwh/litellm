@@ -82,9 +82,10 @@ const AddPassThroughEndpoint: React.FC<AddFallbacksProps> = ({
     setIsLoading(true);
     try {
       // Remove auth field if not premium user
-      if (!premiumUser && 'auth' in formValues) {
-        delete formValues.auth;
-      }
+      // OPEN SOURCE
+      // if (!premiumUser && 'auth' in formValues) {
+      //   delete formValues.auth;
+      // }
       
       // Add guardrails to formValues (only if not empty)
       if (guardrails && Object.keys(guardrails).length > 0) {

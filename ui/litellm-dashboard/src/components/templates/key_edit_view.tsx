@@ -455,7 +455,7 @@ export function KeyEditView({
         name="disable_global_guardrails"
         valuePropName="checked"
       >
-        <Switch disabled={!premiumUser} checkedChildren="Yes" unCheckedChildren="No" />
+        <Switch checkedChildren="Yes" unCheckedChildren="No" />
       </Form.Item>
 
       <Form.Item
@@ -475,7 +475,6 @@ export function KeyEditView({
               form.setFieldValue("policies", v);
             }}
             accessToken={accessToken}
-            disabled={!premiumUser}
           />
         )}
       </Form.Item>

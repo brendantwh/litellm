@@ -425,34 +425,35 @@ export default function AuditLogs({
     return <AuditLogRowExpansionPanel rowData={row.original as AuditLogEntry} />;
   }, []);
 
-  if (!premiumUser) {
-    return (
-      <div style={{ textAlign: "center", marginTop: "20px" }}>
-        <h1 style={{ display: "block", marginBottom: "10px" }}>✨ Enterprise Feature.</h1>
-        <Text style={{ display: "block", marginBottom: "10px" }}>
-          This is a LiteLLM Enterprise feature, and requires a valid key to use.
-        </Text>
-        <Text style={{ display: "block", marginBottom: "20px", fontStyle: "italic" }}>
-          Here&apos;s a preview of what Audit Logs offer:
-        </Text>
-        <img
-          src={auditLogsPreviewImg}
-          alt="Audit Logs Preview"
-          style={{
-            maxWidth: "100%",
-            maxHeight: "700px",
-            borderRadius: "8px",
-            boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-            margin: "0 auto",
-          }}
-          onError={(e) => {
-            console.error("Failed to load audit logs preview image");
-            (e.target as HTMLImageElement).style.display = "none";
-          }}
-        />
-      </div>
-    );
-  }
+  // OPEN SOURCE
+  // if (!premiumUser) {
+  //   return (
+  //     <div style={{ textAlign: "center", marginTop: "20px" }}>
+  //       <h1 style={{ display: "block", marginBottom: "10px" }}>✨ Enterprise Feature.</h1>
+  //       <Text style={{ display: "block", marginBottom: "10px" }}>
+  //         This is a LiteLLM Enterprise feature, and requires a valid key to use.
+  //       </Text>
+  //       <Text style={{ display: "block", marginBottom: "20px", fontStyle: "italic" }}>
+  //         Here&apos;s a preview of what Audit Logs offer:
+  //       </Text>
+  //       <img
+  //         src={auditLogsPreviewImg}
+  //         alt="Audit Logs Preview"
+  //         style={{
+  //           maxWidth: "100%",
+  //           maxHeight: "700px",
+  //           borderRadius: "8px",
+  //           boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+  //           margin: "0 auto",
+  //         }}
+  //         onError={(e) => {
+  //           console.error("Failed to load audit logs preview image");
+  //           (e.target as HTMLImageElement).style.display = "none";
+  //         }}
+  //       />
+  //     </div>
+  //   );
+  // }
 
   const currentDisplayItemsStart = totalFilteredItems > 0 ? (clientCurrentPage - 1) * pageSize + 1 : 0;
   const currentDisplayItemsEnd = Math.min(clientCurrentPage * pageSize, totalFilteredItems);

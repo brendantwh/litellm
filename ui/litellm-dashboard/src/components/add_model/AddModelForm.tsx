@@ -289,14 +289,6 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                     tooltip="Only use this model + credential combination for this team. Useful when teams want to onboard their own OpenAI keys."
                     className="mb-4"
                   >
-                    <Tooltip
-                      title={
-                        !premiumUser
-                          ? "This is an enterprise-only feature. Upgrade to premium to restrict model+credential combinations to a specific team."
-                          : ""
-                      }
-                      placement="top"
-                    >
                       <Switch
                         checked={isTeamOnly}
                         onChange={(checked) => {
@@ -305,9 +297,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                             form.setFieldValue("team_id", undefined);
                           }
                         }}
-                        disabled={!premiumUser}
                       />
-                    </Tooltip>
                   </Form.Item>
                 )}
 
@@ -325,7 +315,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                       },
                     ]}
                   >
-                    <TeamDropdown teams={teams} disabled={!premiumUser} />
+                    <TeamDropdown teams={teams} />
                   </Form.Item>
                 )}
                 {isAdmin && (

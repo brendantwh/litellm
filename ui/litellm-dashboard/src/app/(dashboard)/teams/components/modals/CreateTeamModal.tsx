@@ -471,11 +471,7 @@ const CreateTeamModal = ({
               <Form.Item
                 label="Secret Manager Settings"
                 name="secret_manager_settings"
-                help={
-                  premiumUser
-                    ? "Enter secret manager configuration as a JSON object."
-                    : "Premium feature - Upgrade to manage secret manager settings."
-                }
+                help="Enter secret manager configuration as a JSON object."
                 rules={[
                   {
                     validator: async (_, value) => {
@@ -495,7 +491,7 @@ const CreateTeamModal = ({
                 <Input.TextArea
                   rows={4}
                   placeholder='{"namespace": "admin", "mount": "secret", "path_prefix": "litellm"}'
-                  disabled={!premiumUser}
+                  disabled={false}
                 />
               </Form.Item>
               <Form.Item

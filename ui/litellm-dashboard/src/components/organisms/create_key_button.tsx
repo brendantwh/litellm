@@ -914,13 +914,9 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey }) => {
                     name="disable_global_guardrails"
                     className="mt-4"
                     valuePropName="checked"
-                    help={
-                      premiumUser
-                        ? "Bypass global guardrails for this key"
-                        : "Premium feature - Upgrade to disable global guardrails by key"
-                    }
+                    help="Bypass global guardrails for this key"
                   >
-                    <Switch disabled={!premiumUser} checkedChildren="Yes" unCheckedChildren="No" />
+                    <Switch checkedChildren="Yes" unCheckedChildren="No" />
                   </Form.Item>
                   <Form.Item
                     label={
@@ -940,21 +936,12 @@ const CreateKey: React.FC<CreateKeyProps> = ({ team, teams, data, addKey }) => {
                     }
                     name="policies"
                     className="mt-4"
-                    help={
-                      premiumUser
-                        ? "Select existing policies or enter new ones"
-                        : "Premium feature - Upgrade to set policies by key"
-                    }
+                    help="Select existing policies or enter new ones"
                   >
                     <Select
                       mode="tags"
                       style={{ width: "100%" }}
-                      disabled={!premiumUser}
-                      placeholder={
-                        !premiumUser
-                          ? "Premium feature - Upgrade to set policies by key"
-                          : "Select or enter policies"
-                      }
+                      placeholder="Select or enter policies"
                       options={policiesList.map((name) => ({ value: name, label: name }))}
                     />
                   </Form.Item>
