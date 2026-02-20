@@ -215,15 +215,16 @@ class PostHogLogger(CustomBatchLogger):
             if response is not None:
                 properties["$ai_output_choices"] = response
 
+            # Tools/functions available to the LLM
+            optional_params = kwargs.get("optional_params", {}) or {}
+            tools = optional_params.get("tools")
+            if tools:
+                properties["$ai_tools"] = tools
+
         # Token information
         properties["$ai_input_tokens"] = self._safe_get(standard_logging_object, "prompt_tokens", 0)
         if event_name == "$ai_generation":
             properties["$ai_output_tokens"] = self._safe_get(standard_logging_object, "completion_tokens", 0)
-
-        # Cost and performance
-        response_cost = self._safe_get(standard_logging_object, "response_cost")
-        if response_cost is not None:
-            properties["$ai_total_cost_usd"] = response_cost
 
         properties["$ai_latency"] = self._safe_get(standard_logging_object, "response_time", 0.0)
 
@@ -233,14 +234,87 @@ class PostHogLogger(CustomBatchLogger):
             error_str = self._safe_get(standard_logging_object, "error_str")
             if error_str is not None:
                 properties["$ai_error"] = error_str
+            # Extract HTTP status code from error information
+            error_info = self._safe_get(standard_logging_object, "error_information")
+            error_code = self._safe_get(error_info, "error_code")
+            if error_code:
+                properties["$ai_http_status"] = error_code
 
         # Add trace properties
         self._add_trace_properties(properties, kwargs)
+
+        self._add_core_properties(properties, kwargs)
+        self._add_model_parameters(properties, kwargs)
+        self._add_cost_properties(properties, kwargs)
 
         # Add custom metadata fields
         self._add_custom_metadata_properties(properties, kwargs)
 
         return properties
+
+    def _add_core_properties(self, properties: Dict[str, Any], kwargs: Dict[str, Any]):
+        standard_logging_object = self._safe_get(kwargs, "standard_logging_object", {})
+        metadata = self._extract_metadata(kwargs)
+
+        api_base = self._safe_get(standard_logging_object, "api_base")
+        if api_base:
+            properties["$ai_base_url"] = api_base
+
+        session_id = self._safe_get(metadata, "session_id")
+        if session_id:
+            properties["$ai_session_id"] = session_id
+
+        span_name = self._safe_get(metadata, "span_name") or self._safe_get(metadata, "generation_name")
+        if span_name:
+            properties["$ai_span_name"] = span_name
+
+        # $ai_time_to_first_token is only applicable for streaming responses
+        # (per PostHog docs). For non-streaming, completionStartTime defaults
+        # to endTime, which would produce a misleading value.
+        stream = self._safe_get(standard_logging_object, "stream")
+        if stream is True:
+            start_time = self._safe_get(standard_logging_object, "startTime")
+            completion_start_time = self._safe_get(standard_logging_object, "completionStartTime")
+            
+            if start_time and completion_start_time and isinstance(start_time, (int, float)) and isinstance(completion_start_time, (int, float)):
+                if completion_start_time > start_time:
+                    properties["$ai_time_to_first_token"] = completion_start_time - start_time
+
+    def _add_model_parameters(self, properties: Dict[str, Any], kwargs: Dict[str, Any]):
+        standard_logging_object = self._safe_get(kwargs, "standard_logging_object", {})
+        
+        stream = self._safe_get(standard_logging_object, "stream")
+        if stream is not None:
+            properties["$ai_stream"] = stream
+
+        model_parameters = self._safe_get(standard_logging_object, "model_parameters", {})
+        
+        temperature = self._safe_get(model_parameters, "temperature")
+        if temperature is not None:
+            properties["$ai_temperature"] = temperature
+            
+        max_tokens = self._safe_get(model_parameters, "max_tokens")
+        if max_tokens is not None:
+            properties["$ai_max_tokens"] = max_tokens
+
+    def _add_cost_properties(self, properties: Dict[str, Any], kwargs: Dict[str, Any]):
+        standard_logging_object = self._safe_get(kwargs, "standard_logging_object", {})
+        
+        response_cost = self._safe_get(standard_logging_object, "response_cost")
+        if response_cost is not None:
+            properties["$ai_total_cost_usd"] = response_cost
+
+        cost_breakdown = self._safe_get(standard_logging_object, "cost_breakdown", {})
+        if not cost_breakdown:
+            return
+            
+        input_cost = self._safe_get(cost_breakdown, "input_cost")
+        if input_cost is not None:
+            properties["$ai_input_cost_usd"] = input_cost
+            
+        output_cost = self._safe_get(cost_breakdown, "output_cost")
+        if output_cost is not None:
+            properties["$ai_output_cost_usd"] = output_cost
 
     def _add_trace_properties(self, properties: Dict[str, Any], kwargs: Dict[str, Any]):
         standard_logging_object = self._safe_get(kwargs, "standard_logging_object", {})
