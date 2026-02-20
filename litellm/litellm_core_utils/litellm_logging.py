@@ -64,6 +64,7 @@ from litellm.litellm_core_utils.get_litellm_params import get_litellm_params
 from litellm.litellm_core_utils.llm_cost_calc.tool_call_cost_tracking import (
     StandardBuiltInToolCostTracking,
 )
+from litellm.litellm_core_utils.logging_utils import truncate_base64_in_messages
 from litellm.litellm_core_utils.model_param_helper import ModelParamHelper
 from litellm.litellm_core_utils.redact_messages import (
     redact_message_input_output_from_custom_logger,
@@ -334,7 +335,12 @@ class Logging(LiteLLMLoggingBaseClass):
                 messages = new_messages
 
         self.model = model
-        self.messages = copy.deepcopy(messages) if messages is not None else None
+        # Shallow copy of the outer list only (inner message dicts are shared).
+        # Safe because the logging layer does not mutate individual message dicts.
+        _copy_start = time.time()
+        self.messages = copy.copy(messages) if messages is not None else None
+        self.message_copy_duration_ms: float = (time.time() - _copy_start) * 1000
+        self.callback_duration_ms: float = 0.0
         self.stream = stream
         self.start_time = start_time  # log the call start time
         self.call_type = call_type
@@ -1335,7 +1341,11 @@ class Logging(LiteLLMLoggingBaseClass):
         )
 
         # Store additional costs if provided (free-form dict for extensibility)
-        if additional_costs and isinstance(additional_costs, dict) and len(additional_costs) > 0:
+        if (
+            additional_costs
+            and isinstance(additional_costs, dict)
+            and len(additional_costs) > 0
+        ):
             self.cost_breakdown["additional_costs"] = additional_costs
 
         # Store discount information if provided
@@ -1625,15 +1635,26 @@ class Logging(LiteLLMLoggingBaseClass):
 
         self.model_call_details[
             "standard_logging_object"
-        ] = get_standard_logging_object_payload(
+        ] = self._build_standard_logging_payload(
+            logging_result, start_time, end_time
+        )
+
+    def _build_standard_logging_payload(
+        self, init_response_obj: Any, start_time: Any, end_time: Any
+    ) -> Any:
+        """Build StandardLoggingPayload and accumulate its construction time."""
+        _start = time.time()
+        payload = get_standard_logging_object_payload(
             kwargs=self.model_call_details,
-            init_response_obj=logging_result,
+            init_response_obj=init_response_obj,
             start_time=start_time,
             end_time=end_time,
             logging_obj=self,
             status="success",
             standard_built_in_tools_params=self.standard_built_in_tools_params,
         )
+        self.callback_duration_ms += (time.time() - _start) * 1000
+        return payload
 
     def _transform_usage_objects(self, result):
         if isinstance(result, ResponsesAPIResponse):
@@ -1728,14 +1749,8 @@ class Logging(LiteLLMLoggingBaseClass):
                 elif isinstance(result, dict) or isinstance(result, list):
                     self.model_call_details[
                         "standard_logging_object"
-                    ] = get_standard_logging_object_payload(
-                        kwargs=self.model_call_details,
-                        init_response_obj=result,
-                        start_time=start_time,
-                        end_time=end_time,
-                        logging_obj=self,
-                        status="success",
-                        standard_built_in_tools_params=self.standard_built_in_tools_params,
+                    ] = self._build_standard_logging_payload(
+                        result, start_time, end_time
                     )
             elif standard_logging_object is not None:
                 self.model_call_details[
@@ -1907,14 +1922,8 @@ class Logging(LiteLLMLoggingBaseClass):
                 ## STANDARDIZED LOGGING PAYLOAD
                 self.model_call_details[
                     "standard_logging_object"
-                ] = get_standard_logging_object_payload(
-                    kwargs=self.model_call_details,
-                    init_response_obj=complete_streaming_response,
-                    start_time=start_time,
-                    end_time=end_time,
-                    logging_obj=self,
-                    status="success",
-                    standard_built_in_tools_params=self.standard_built_in_tools_params,
+                ] = self._build_standard_logging_payload(
+                    complete_streaming_response, start_time, end_time
                 )
                 if (
                     standard_logging_payload := self.model_call_details.get(
@@ -2431,14 +2440,8 @@ class Logging(LiteLLMLoggingBaseClass):
             ## STANDARDIZED LOGGING PAYLOAD
             self.model_call_details[
                 "standard_logging_object"
-            ] = get_standard_logging_object_payload(
-                kwargs=self.model_call_details,
-                init_response_obj=complete_streaming_response,
-                start_time=start_time,
-                end_time=end_time,
-                logging_obj=self,
-                status="success",
-                standard_built_in_tools_params=self.standard_built_in_tools_params,
+            ] = self._build_standard_logging_payload(
+                complete_streaming_response, start_time, end_time
             )
 
             # print standard logging payload
@@ -2461,14 +2464,8 @@ class Logging(LiteLLMLoggingBaseClass):
             ## STANDARDIZED LOGGING PAYLOAD
             self.model_call_details[
                 "standard_logging_object"
-            ] = get_standard_logging_object_payload(
-                kwargs=self.model_call_details,
-                init_response_obj=result,
-                start_time=start_time,
-                end_time=end_time,
-                logging_obj=self,
-                status="success",
-                standard_built_in_tools_params=self.standard_built_in_tools_params,
+            ] = self._build_standard_logging_payload(
+                result, start_time, end_time
             )
 
             # print standard logging payload
@@ -4502,6 +4499,7 @@ class StandardLoggingPayloadSetup:
             user_api_key_budget_reset_at=None,
             user_api_key_team_id=None,
             user_api_key_org_id=None,
+            user_api_key_project_id=None,
             user_api_key_user_id=None,
             user_api_key_team_alias=None,
             user_api_key_user_email=None,
@@ -4519,13 +4517,19 @@ class StandardLoggingPayloadSetup:
             requester_custom_headers=None,
             cold_storage_object_key=None,
             user_api_key_auth_metadata=None,
+            team_alias=None,
+            team_id=None,
         )
         if isinstance(metadata, dict):
             for key in metadata.keys() & _STANDARD_LOGGING_METADATA_KEYS:
                 clean_metadata[key] = metadata[key]  # type: ignore
 
             user_api_key = metadata.get("user_api_key")
-            if user_api_key and isinstance(user_api_key, str) and is_valid_sha256_hash(user_api_key):
+            if (
+                user_api_key
+                and isinstance(user_api_key, str)
+                and is_valid_sha256_hash(user_api_key)
+            ):
                 clean_metadata["user_api_key_hash"] = user_api_key
             _potential_requester_metadata = metadata.get(
                 "metadata", None
@@ -5202,8 +5206,10 @@ def get_standard_logging_object_payload(
             model_id=_model_id,
             requester_ip_address=clean_metadata.get("requester_ip_address", None),
             user_agent=clean_metadata.get("user_agent", None),
-            messages=StandardLoggingPayloadSetup.append_system_prompt_messages(
-                kwargs=kwargs, messages=kwargs.get("messages")
+            messages=truncate_base64_in_messages(
+                StandardLoggingPayloadSetup.append_system_prompt_messages(
+                    kwargs=kwargs, messages=kwargs.get("messages")
+                )
             ),
             response=final_response_obj,
             model_parameters=ModelParamHelper.get_standard_logging_model_parameters(
@@ -5262,6 +5268,7 @@ def get_standard_logging_metadata(
         user_api_key_budget_reset_at=None,
         user_api_key_team_id=None,
         user_api_key_org_id=None,
+        user_api_key_project_id=None,
         user_api_key_user_id=None,
         user_api_key_user_email=None,
         user_api_key_team_alias=None,
@@ -5279,6 +5286,8 @@ def get_standard_logging_metadata(
         user_api_key_request_route=None,
         cold_storage_object_key=None,
         user_api_key_auth_metadata=None,
+        team_alias=None,
+        team_id=None,
     )
     if isinstance(metadata, dict):
         # Update the clean_metadata with values from input metadata that match StandardLoggingMetadata fields
