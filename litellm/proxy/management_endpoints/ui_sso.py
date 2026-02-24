@@ -214,29 +214,41 @@ def process_sso_jwt_access_token(
             if isinstance(result, dict):
                 result_team_ids: Optional[List[str]] = result.get("team_ids", [])
                 if not result_team_ids:
-                    team_ids = sso_jwt_handler.get_team_ids_from_jwt(access_token_payload)
+                    team_ids = sso_jwt_handler.get_team_ids_from_jwt(
+                        access_token_payload
+                    )
                     result["team_ids"] = team_ids
             else:
                 result_team_ids = getattr(result, "team_ids", []) if result else []
                 if not result_team_ids:
-                    team_ids = sso_jwt_handler.get_team_ids_from_jwt(access_token_payload)
+                    team_ids = sso_jwt_handler.get_team_ids_from_jwt(
+                        access_token_payload
+                    )
                     setattr(result, "team_ids", team_ids)
 
         # Extract user role from access token if not already set from UserInfo
-        existing_role = result.get("user_role") if isinstance(result, dict) else getattr(result, "user_role", None)
+        existing_role = (
+            result.get("user_role")
+            if isinstance(result, dict)
+            else getattr(result, "user_role", None)
+        )
         if existing_role is None:
             user_role: Optional[LitellmUserRoles] = None
 
             # Try role_mappings first (group-based role determination)
             if role_mappings is not None and role_mappings.roles:
                 group_claim = role_mappings.group_claim
-                user_groups_raw: Any = get_nested_value(access_token_payload, group_claim)
+                user_groups_raw: Any = get_nested_value(
+                    access_token_payload, group_claim
+                )
 
                 user_groups: List[str] = []
                 if isinstance(user_groups_raw, list):
                     user_groups = [str(g) for g in user_groups_raw]
                 elif isinstance(user_groups_raw, str):
-                    user_groups = [g.strip() for g in user_groups_raw.split(",") if g.strip()]
+                    user_groups = [
+                        g.strip() for g in user_groups_raw.split(",") if g.strip()
+                    ]
                 elif user_groups_raw is not None:
                     user_groups = [str(user_groups_raw)]
 
@@ -250,8 +262,12 @@ def process_sso_jwt_access_token(
 
             # Fallback: try GENERIC_USER_ROLE_ATTRIBUTE on the access token payload
             if user_role is None:
-                generic_user_role_attribute_name = os.getenv("GENERIC_USER_ROLE_ATTRIBUTE", "role")
-                user_role_from_token = get_nested_value(access_token_payload, generic_user_role_attribute_name)
+                generic_user_role_attribute_name = os.getenv(
+                    "GENERIC_USER_ROLE_ATTRIBUTE", "role"
+                )
+                user_role_from_token = get_nested_value(
+                    access_token_payload, generic_user_role_attribute_name
+                )
                 if user_role_from_token is not None:
                     user_role = get_litellm_user_role(user_role_from_token)
                     verbose_proxy_logger.debug(
@@ -664,13 +680,11 @@ async def _setup_role_mappings() -> Optional["RoleMappings"]:
         import ast
 
         try:
-            generic_user_role_mappings_data: Dict[
-                LitellmUserRoles, List[str]
-            ] = ast.literal_eval(generic_role_mappings)
+            generic_user_role_mappings_data: Dict[LitellmUserRoles, List[str]] = (
+                ast.literal_eval(generic_role_mappings)
+            )
             if isinstance(generic_user_role_mappings_data, dict):
-                from litellm.types.proxy.management_endpoints.ui_sso import (
-                    RoleMappings,
-                )
+                from litellm.types.proxy.management_endpoints.ui_sso import RoleMappings
 
                 role_mappings_data = {
                     "provider": "generic",
@@ -772,7 +786,9 @@ async def get_generic_sso_response(
         )
 
         access_token_str: Optional[str] = generic_sso.access_token
-        process_sso_jwt_access_token(access_token_str, sso_jwt_handler, result, role_mappings=role_mappings)
+        process_sso_jwt_access_token(
+            access_token_str, sso_jwt_handler, result, role_mappings=role_mappings
+        )
 
     except Exception as e:
         verbose_proxy_logger.exception(
@@ -1002,9 +1018,9 @@ def apply_user_info_values_to_sso_user_defined_values(
     else:
         # SSO didn't provide a valid role, fall back to DB role or default
         if user_info is None or user_info.user_role is None:
-            user_defined_values[
-                "user_role"
-            ] = LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value
+            user_defined_values["user_role"] = (
+                LitellmUserRoles.INTERNAL_USER_VIEW_ONLY.value
+            )
             verbose_proxy_logger.debug(
                 "No SSO or DB role found, using default: INTERNAL_USER_VIEW_ONLY"
             )
@@ -1432,9 +1448,9 @@ async def insert_sso_user(
         if user_defined_values.get("max_budget") is None:
             user_defined_values["max_budget"] = litellm.max_internal_user_budget
         if user_defined_values.get("budget_duration") is None:
-            user_defined_values[
-                "budget_duration"
-            ] = litellm.internal_user_budget_duration
+            user_defined_values["budget_duration"] = (
+                litellm.internal_user_budget_duration
+            )
 
     if user_defined_values["user_role"] is None:
         user_defined_values["user_role"] = LitellmUserRoles.INTERNAL_USER_VIEW_ONLY
@@ -2535,9 +2551,9 @@ class MicrosoftSSOHandler:
 
         # if user is trying to get the raw sso response for debugging, return the raw sso response
         if return_raw_sso_response:
-            original_msft_result[
-                MicrosoftSSOHandler.GRAPH_API_RESPONSE_KEY
-            ] = user_team_ids
+            original_msft_result[MicrosoftSSOHandler.GRAPH_API_RESPONSE_KEY] = (
+                user_team_ids
+            )
             original_msft_result["app_roles"] = app_roles
             return original_msft_result or {}
 
@@ -2656,9 +2672,9 @@ class MicrosoftSSOHandler:
 
             # Fetch user membership from Microsoft Graph API
             all_group_ids = []
-            next_link: Optional[
-                str
-            ] = MicrosoftSSOHandler.graph_api_user_groups_endpoint
+            next_link: Optional[str] = (
+                MicrosoftSSOHandler.graph_api_user_groups_endpoint
+            )
             auth_headers = {"Authorization": f"Bearer {access_token}"}
             page_count = 0
 
