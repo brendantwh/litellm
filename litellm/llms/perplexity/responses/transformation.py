@@ -82,9 +82,12 @@ class PerplexityResponsesConfig(OpenAIResponsesAPIConfig):
         self, headers: dict, model: str, litellm_params: Optional[GenericLiteLLMParams]
     ) -> dict:
         """Validate environment and set up headers"""
-        # Get API key from environment
-        api_key = get_secret_str("PERPLEXITYAI_API_KEY") or get_secret_str(
-            "PERPLEXITY_API_KEY"
+        litellm_params = litellm_params or GenericLiteLLMParams()
+        # Get API key: prefer litellm_params (from config.yaml), then env vars
+        api_key = (
+            litellm_params.api_key
+            or get_secret_str("PERPLEXITYAI_API_KEY")
+            or get_secret_str("PERPLEXITY_API_KEY")
         )
 
         if api_key:
