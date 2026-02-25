@@ -21,14 +21,36 @@ def cost_per_token(model: str, usage: Usage) -> Tuple[float, float]:
         Tuple[float, float] - prompt_cost_in_usd, completion_cost_in_usd
     """
     ## USE PRE-CALCULATED COST FROM PERPLEXITY IF AVAILABLE
-    ## Perplexity returns accurate cost in usage.cost.total_cost including request fees
+    ## Perplexity returns accurate cost in usage.cost including request/tool fees
     cost_info = getattr(usage, "cost", None)
-    if cost_info is not None and isinstance(cost_info, dict):
-        total_cost = cost_info.get("total_cost")
-        if total_cost is not None:
-            # Return total cost as completion_cost (prompt_cost=0) since Perplexity
-            # doesn't break down by input/output in their cost object
-            return (0.0, float(total_cost))
+    if cost_info is not None:
+        if isinstance(cost_info, dict):
+            # Dict format from Perplexity API:
+            #   Chat completions: {"input_tokens_cost", "output_tokens_cost", "request_cost", "total_cost"}
+            #   Responses API:     {"input_cost", "output_cost", "tool_calls_cost", "total_cost", "currency"}
+            total_cost = cost_info.get("total_cost")
+            if total_cost is not None:
+                input_cost = float(
+                    cost_info.get("input_cost")
+                    or cost_info.get("input_tokens_cost")
+                    or 0
+                )
+                output_cost = float(
+                    cost_info.get("output_cost")
+                    or cost_info.get("output_tokens_cost")
+                    or 0
+                )
+                additional_cost = float(
+                    cost_info.get("tool_calls_cost")
+                    or cost_info.get("request_cost")
+                    or 0
+                )
+                return (input_cost, output_cost + additional_cost)
+        elif isinstance(cost_info, (int, float)):
+            # Flat float — e.g. Responses API path where the cost dict was
+            # flattened to total_cost by the transformation layer.
+            # No breakdown available, use total as completion cost.
+            return (0.0, float(cost_info))
 
     ## FALLBACK: Calculate cost manually if Perplexity doesn't provide it
     ## GET MODEL INFO
