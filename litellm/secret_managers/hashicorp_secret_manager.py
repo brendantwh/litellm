@@ -44,10 +44,10 @@ class HashicorpSecretManager(BaseSecretManager):
 
         self._verify_required_credentials_exist()
 
-        if premium_user is not True:
-            raise ValueError(
-                f"Hashicorp secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
-            )
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         f"Hashicorp secret manager is only available for premium users. {CommonProxyErrors.not_premium_user.value}"
+        #     )
 
         litellm.secret_manager_client = self
         litellm._key_management_system = KeyManagementSystem.HASHICORP_VAULT
