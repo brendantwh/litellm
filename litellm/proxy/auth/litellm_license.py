@@ -182,7 +182,7 @@ class LicenseCheck:
             padding_needed = len(license_key) % 4
             if padding_needed:
                 license_key += "=" * (4 - padding_needed)
-            
+
             decoded = base64.b64decode(license_key)
             message, signature = decoded.split(b".", 1)
 

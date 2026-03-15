@@ -45,7 +45,9 @@ def append_query_params(url: Optional[str], params: dict) -> str:
     if not isinstance(url, str) or url == "":
         # Preserve previous startup behavior when DATABASE_URL is absent.
         # Returning an empty string avoids urlparse type errors in test/dev flows.
-        verbose_proxy_logger.warning("append_query_params received empty or non-string URL, returning empty string")
+        verbose_proxy_logger.warning(
+            "append_query_params received empty or non-string URL, returning empty string"
+        )
         return ""
     parsed_url = urlparse.urlparse(url)
     parsed_query = urlparse.parse_qs(parsed_url.query)
@@ -277,6 +279,15 @@ class ProxyInitializationHelpers:
         if max_requests_before_restart is not None:
             gunicorn_options["max_requests"] = max_requests_before_restart
 
+        # Clean up prometheus .db files when a worker exits (prevents ghost gauge values)
+        if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+            from litellm.proxy.prometheus_cleanup import mark_worker_exit
+
+            def child_exit(server, worker):
+                mark_worker_exit(worker.pid)
+
+            gunicorn_options["child_exit"] = child_exit
+
         if ssl_certfile_path is not None and ssl_keyfile_path is not None:
             print(  # noqa
                 f"\033[1;32mLiteLLM Proxy: Using SSL with certfile: {ssl_certfile_path} and keyfile: {ssl_keyfile_path}\033[0m\n"  # noqa
@@ -313,6 +324,46 @@ class ProxyInitializationHelpers:
         if sys.platform in ("win32", "cygwin", "cli"):
             return None  # Let uvicorn choose the default loop on Windows
         return "uvloop"
+
+    @staticmethod
+    def _maybe_setup_prometheus_multiproc_dir(
+        num_workers: int,
+        litellm_settings: Optional[dict],
+    ) -> None:
+        """
+        Auto-create PROMETHEUS_MULTIPROC_DIR when running with multiple workers
+        and prometheus is configured as a callback.
+        """
+        import tempfile
+
+        if num_workers <= 1 or litellm_settings is None:
+            return
+
+        # Check if prometheus is in any callback list
+        callbacks = litellm_settings.get("callbacks") or []
+        success_callbacks = litellm_settings.get("success_callback") or []
+        failure_callbacks = litellm_settings.get("failure_callback") or []
+        all_callbacks = callbacks + success_callbacks + failure_callbacks
+        if "prometheus" not in all_callbacks:
+            return
+
+        from litellm.proxy.prometheus_cleanup import wipe_directory
+
+        multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR") or os.environ.get(
+            "prometheus_multiproc_dir"
+        )
+
+        auto_created = not multiproc_dir
+        if not multiproc_dir:
+            multiproc_dir = os.path.join(
+                tempfile.gettempdir(), "litellm_prometheus_multiproc"
+            )
+            os.environ["PROMETHEUS_MULTIPROC_DIR"] = multiproc_dir
+
+        os.makedirs(multiproc_dir, exist_ok=True)
+        wipe_directory(multiproc_dir)
+        action = "Auto-created" if auto_created else "Using existing"
+        print(f"LiteLLM: {action} PROMETHEUS_MULTIPROC_DIR={multiproc_dir}")  # noqa
 
 
 @click.command()
@@ -505,6 +556,13 @@ class ProxyInitializationHelpers:
     help="Restart worker after this many requests (uvicorn: limit_max_requests, gunicorn: max_requests)",
     envvar="MAX_REQUESTS_BEFORE_RESTART",
 )
+@click.option(
+    "--skip_db_migration_check",
+    is_flag=True,
+    default=False,
+    help="Warn and continue instead of exiting when database migration fails.",
+    envvar="SKIP_DB_MIGRATION_CHECK",
+)
 def run_server(  # noqa: PLR0915
     host,
     port,
@@ -544,6 +602,7 @@ def run_server(  # noqa: PLR0915
     skip_server_startup,
     keepalive_timeout,
     max_requests_before_restart,
+    skip_db_migration_check: bool,
 ):
     args = locals()
     if local:
@@ -803,7 +862,20 @@ def run_server(  # noqa: PLR0915
                 ):
                     check_prisma_schema_diff(db_url=None)
                 else:
-                    PrismaManager.setup_database(use_migrate=not use_prisma_db_push)
+                    if not PrismaManager.setup_database(
+                        use_migrate=not use_prisma_db_push
+                    ):
+                        if skip_db_migration_check:
+                            print(  # noqa
+                                "\033[1;33mLiteLLM Proxy: Database migration failed but continuing startup. "
+                                "Pass --skip_db_migration_check to allow this.\033[0m"
+                            )
+                        else:
+                            print(  # noqa
+                                "\033[1;31mLiteLLM Proxy: Database setup failed after multiple retries. "
+                                "The proxy cannot start safely. Please check your database connection and migration status.\033[0m"
+                            )
+                            sys.exit(1)
             else:
                 print(  # noqa
                     f"Unable to connect to DB. DATABASE_URL found in environment, but prisma package not found."  # noqa
@@ -818,6 +890,12 @@ def run_server(  # noqa: PLR0915
 
         # DO NOT DELETE - enables global variables to work across files
         from litellm.proxy.proxy_server import app  # noqa
+
+        # Auto-create PROMETHEUS_MULTIPROC_DIR for multi-worker setups
+        ProxyInitializationHelpers._maybe_setup_prometheus_multiproc_dir(
+            num_workers=num_workers,
+            litellm_settings=litellm_settings if config else None,
+        )
 
         # --- SEPARATE HEALTH APP LOGIC ---
         # To run the health app separately, use:
