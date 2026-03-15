@@ -348,6 +348,7 @@ const AddModelForm: React.FC<AddModelFormProps> = ({
                   teams={teams}
                   guardrailsList={guardrailsList || []}
                   tagsList={tagsList || {}}
+                  accessToken={accessToken || ""}
                 />
               </>
             )}

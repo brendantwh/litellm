@@ -14,18 +14,11 @@ from typing import Any, Dict, List, Optional, Union
 
 import httpx
 
-from litellm._logging import verbose_logger
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.llms.base_llm.chat.transformation import BaseLLMException
 from litellm.llms.openai.responses.transformation import OpenAIResponsesAPIConfig
 from litellm.secret_managers.main import get_secret_str
-from litellm.types.llms.openai import (
-    ResponseAPIUsage,
-    ResponseInputParam,
-    ResponsesAPIOptionalRequestParams,
-    ResponsesAPIResponse,
-    ResponsesAPIStreamingResponse,
-)
+from litellm.types.llms.openai import ResponseInputParam, ResponsesAPIResponse
 from litellm.types.router import GenericLiteLLMParams
 from litellm.types.utils import LlmProviders
 
@@ -56,7 +49,6 @@ class PerplexityResponsesConfig(OpenAIResponsesAPIConfig):
             "top_p",
             "tools",
             "reasoning",
-            "preset",
             "instructions",
             "models",  # Model fallback support
             "tool_choice",
@@ -78,6 +70,10 @@ class PerplexityResponsesConfig(OpenAIResponsesAPIConfig):
             "service_tier",
         ]
 
+    @property
+    def custom_llm_provider(self) -> LlmProviders:
+        return LlmProviders.PERPLEXITY
+
     def validate_environment(
         self, headers: dict, model: str, litellm_params: Optional[GenericLiteLLMParams]
     ) -> dict:
@@ -85,6 +81,8 @@ class PerplexityResponsesConfig(OpenAIResponsesAPIConfig):
         litellm_params = litellm_params or GenericLiteLLMParams()
         # Get API key: prefer litellm_params (from config.yaml), then env vars
         api_key = (
+            litellm_params.api_key
+            or get_secret_str("PERPLEXITYAI_API_KEY")
             litellm_params.api_key
             or get_secret_str("PERPLEXITYAI_API_KEY")
             or get_secret_str("PERPLEXITY_API_KEY")
@@ -262,21 +260,13 @@ class PerplexityResponsesConfig(OpenAIResponsesAPIConfig):
         litellm_params: GenericLiteLLMParams,
         headers: dict,
     ) -> Dict:
-        """
-        Transform request to Perplexity Responses API format
-        """
-        # Check if the model is a preset (format: preset/preset-name)
+        """Handle preset/ model prefix: send as {"preset": name} instead of {"model": name}."""
+        input = self._ensure_message_type(input)
         if model.startswith("preset/"):
-            preset_name = model.replace("preset/", "")
-            data = {
-                "preset": preset_name,
-                "input": self._format_input(input),
-            }
-        # Check if preset is explicitly provided in params
-        elif response_api_optional_request_params.get("preset"):
-            data = {
-                "preset": response_api_optional_request_params.pop("preset"),
-                "input": self._format_input(input),
+            input = self._validate_input_param(input)
+            data: Dict = {
+                "preset": model[len("preset/") :],
+                "input": input,
             }
         else:
             # Full request format for third-party models
@@ -325,22 +315,17 @@ class PerplexityResponsesConfig(OpenAIResponsesAPIConfig):
         raw_response: httpx.Response,
         logging_obj: LiteLLMLoggingObj,
     ) -> ResponsesAPIResponse:
-        """
-        Transform Perplexity Responses API response to OpenAI Responses API format
-        """
+        """Check for Perplexity's status:'failed' on HTTP 200 before delegating to base."""
         try:
             raw_response_json = raw_response.json()
-        except Exception as e:
-            raise BaseLLMException(
-                status_code=raw_response.status_code,
-                message=f"Failed to parse response: {str(e)}",
-            )
+        except Exception:
+            raw_response_json = None
 
-        # Check for error status
-        status = raw_response_json.get("status")
-        if status == "failed":
+        if (
+            isinstance(raw_response_json, dict)
+            and raw_response_json.get("status") == "failed"
+        ):
             error = raw_response_json.get("error", {})
-            error_message = error.get("message", "Unknown error")
             raise BaseLLMException(
                 status_code=raw_response.status_code,
                 message=error_message,
