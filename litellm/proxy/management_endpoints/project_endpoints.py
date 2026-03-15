@@ -340,23 +340,23 @@ async def new_project(
     )
 
     try:
-        if getattr(data, "tags", None) is not None and not premium_user:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "Only premium users can add tags to projects. "
-                    + CommonProxyErrors.not_premium_user.value
-                },
-            )
+        # if getattr(data, "tags", None) is not None and not premium_user:
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail={
+        #             "error": "Only premium users can add tags to projects. "
+        #             + CommonProxyErrors.not_premium_user.value
+        #         },
+        #     )
 
-        if not premium_user:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "Project management is an enterprise feature. "
-                    + CommonProxyErrors.not_premium_user.value
-                },
-            )
+        # if not premium_user:
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail={
+        #             "error": "Project management is an enterprise feature. "
+        #             + CommonProxyErrors.not_premium_user.value
+        #         },
+        #     )
 
         # ADD METADATA FIELDS
         for field in LiteLLM_ManagementEndpoint_MetadataFields_Premium:
@@ -535,23 +535,23 @@ async def update_project(  # noqa: PLR0915
     )
 
     try:
-        if getattr(data, "tags", None) is not None and not premium_user:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "Only premium users can add tags to projects. "
-                    + CommonProxyErrors.not_premium_user.value
-                },
-            )
+        # if getattr(data, "tags", None) is not None and not premium_user:
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail={
+        #             "error": "Only premium users can add tags to projects. "
+        #             + CommonProxyErrors.not_premium_user.value
+        #         },
+        #     )
 
-        if not premium_user:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "Project management is an enterprise feature. "
-                    + CommonProxyErrors.not_premium_user.value
-                },
-            )
+        # if not premium_user:
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail={
+        #             "error": "Project management is an enterprise feature. "
+        #             + CommonProxyErrors.not_premium_user.value
+        #         },
+        #     )
 
         # ADD METADATA FIELDS
         for field in LiteLLM_ManagementEndpoint_MetadataFields_Premium:
@@ -724,14 +724,14 @@ async def delete_project(
     from litellm.proxy.proxy_server import premium_user, prisma_client
 
     try:
-        if not premium_user:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "Project management is an enterprise feature. "
-                    + CommonProxyErrors.not_premium_user.value
-                },
-            )
+        # if not premium_user:
+        #     raise HTTPException(
+        #         status_code=403,
+        #         detail={
+        #             "error": "Project management is an enterprise feature. "
+        #             + CommonProxyErrors.not_premium_user.value
+        #         },
+        #     )
 
         if prisma_client is None:
             raise HTTPException(
