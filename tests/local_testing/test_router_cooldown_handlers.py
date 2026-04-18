@@ -45,9 +45,9 @@ async def test_cooldown_badrequest_error():
                 "model_name": "gpt-3.5-turbo",
                 "litellm_params": {
                     "model": "azure/gpt-4.1-mini",
-                    "api_key": os.getenv("AZURE_API_KEY"),
+                    "api_key": os.getenv("AZURE_AI_API_KEY"),
                     "api_version": os.getenv("AZURE_API_VERSION"),
-                    "api_base": os.getenv("AZURE_API_BASE"),
+                    "api_base": os.getenv("AZURE_AI_API_BASE"),
                 },
             }
         ],
@@ -376,7 +376,11 @@ async def test_single_deployment_cooldown_with_allowed_fails():
             except litellm.Timeout:
                 pass
 
-        await asyncio.sleep(2)
+        # Poll until the mock is called (or timeout)
+        for _ in range(40):
+            if mock_client.call_count >= 1:
+                break
+            await asyncio.sleep(0.1)
 
         mock_client.assert_called_once()
 
@@ -426,7 +430,11 @@ async def test_single_deployment_cooldown_with_allowed_fail_policy():
             except litellm.Timeout:
                 pass
 
-        await asyncio.sleep(2)
+        # Poll until the mock is called (or timeout)
+        for _ in range(40):
+            if mock_client.call_count >= 1:
+                break
+            await asyncio.sleep(0.1)
 
         mock_client.assert_called_once()
 
