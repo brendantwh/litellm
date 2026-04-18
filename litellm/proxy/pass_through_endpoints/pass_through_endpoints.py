@@ -2205,12 +2205,13 @@ async def _register_pass_through_endpoint(
     dependencies = None
 
     if auth is not None and str(auth).lower() == "true":
-        if premium_user is not True:
-            raise ValueError(
-                "Error Setting Authentication on Pass Through Endpoint: {}".format(
-                    CommonProxyErrors.not_premium_user.value
-                )
-            )
+        # OPEN SOURCE: License check disabled - authentication available for everyone on pass-through endpoints
+        # if premium_user is not True:
+        #     raise ValueError(
+        #         "Error Setting Authentication on Pass Through Endpoint: {}".format(
+        #             CommonProxyErrors.not_premium_user.value
+        #         )
+        #     )
         dependencies = [Depends(user_api_key_auth)]
         if path not in LiteLLMRoutes.openai_routes.value:
             LiteLLMRoutes.openai_routes.value.append(path)
