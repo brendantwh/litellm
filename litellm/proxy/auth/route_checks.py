@@ -301,7 +301,7 @@ class RouteChecks:
             return True
 
         if RouteChecks.check_route_access(
-            route=route, allowed_routes=LiteLLMRoutes.mcp_routes.value
+            route=route, allowed_routes=LiteLLMRoutes.mcp_inference_routes.value
         ):
             return True
 
@@ -359,7 +359,9 @@ class RouteChecks:
         """
         Check if route is a management route
         """
-        return route in LiteLLMRoutes.management_routes.value
+        return RouteChecks.check_route_access(
+            route=route, allowed_routes=LiteLLMRoutes.management_routes.value
+        )
 
     @staticmethod
     def is_info_route(route: str) -> bool:
