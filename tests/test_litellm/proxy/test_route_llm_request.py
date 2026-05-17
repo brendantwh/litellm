@@ -115,6 +115,47 @@ async def test_route_request_no_model_required_with_router_settings():
 
 
 @pytest.mark.asyncio
+async def test_route_request_vector_store_routes_model_none_no_api_key_in_body():
+    """
+    GET /vector_stores/{id} and related routes do not send api_key in the body.
+    Router must still accept model=None (as set by common_processing_pre_call_logic).
+    """
+    cases: list[tuple[str, dict]] = [
+        ("avector_store_retrieve", {"vector_store_id": "vs_123", "model": None}),
+        ("avector_store_list", {"model": None}),
+        (
+            "avector_store_update",
+            {"vector_store_id": "vs_123", "name": "n", "model": None},
+        ),
+        ("avector_store_delete", {"vector_store_id": "vs_123", "model": None}),
+    ]
+
+    for route_type, data in cases:
+        llm_router = MagicMock()
+        llm_router.router_general_settings.pass_through_all_models = False
+        llm_router.default_deployment = None
+        llm_router.pattern_router.patterns = []
+        llm_router.model_names = []
+        llm_router.has_model_id.return_value = False
+        llm_router.deployment_names = []
+        llm_router.model_group_alias = None
+
+        getattr(llm_router, route_type).return_value = "fake_response"
+
+        response = await route_request(dict(data), llm_router, None, route_type)
+
+        assert response == "fake_response"
+        mock_method = getattr(llm_router, route_type)
+        mock_method.assert_called_once()
+        actual_kwargs = mock_method.call_args.kwargs
+        for key, value in data.items():
+            assert actual_kwargs.get(key) == value, (
+                f"{route_type}: expected {key}={value!r}, got {actual_kwargs.get(key)!r}"
+            )
+        llm_router.reset_mock()
+
+
+@pytest.mark.asyncio
 async def test_route_request_no_model_required_with_router_settings_and_no_router():
     """Test route types that don't require model parameter with router settings and no router"""
     from unittest.mock import patch
@@ -239,6 +280,53 @@ async def test_route_request_with_router_settings_override_preserves_existing():
     assert call_kwargs["num_retries"] == 10
     # Key/team timeout should be applied since not in request
     assert call_kwargs["timeout"] == 30
+
+
+def test_mock_testing_kwarg_names_matches_dataclass():
+    """``_MOCK_TESTING_KWARG_NAMES`` is hardcoded to avoid a cyclic import
+    against ``litellm.types.router``. This test guards against drift —
+    if a new ``mock_testing_*`` field is added to ``MockRouterTestingParams``
+    the strip list must be updated to keep covering it."""
+    from dataclasses import fields
+
+    from litellm.proxy.route_llm_request import _MOCK_TESTING_KWARG_NAMES
+    from litellm.types.router import MockRouterTestingParams
+
+    assert set(_MOCK_TESTING_KWARG_NAMES) == {
+        f.name for f in fields(MockRouterTestingParams)
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mock_flag",
+    [
+        "mock_testing_fallbacks",
+        "mock_testing_context_fallbacks",
+        "mock_testing_content_policy_fallbacks",
+    ],
+)
+async def test_route_request_strips_mock_testing_flags(mock_flag):
+    """VERIA-44: router-internal testing flags must not survive a
+    user-supplied request body. Without this strip, an attacker can
+    combine ``mock_testing_fallbacks=true`` with an unauthorized fallback
+    in ``router_settings_override`` to deterministically execute requests
+    against restricted models."""
+    data = {
+        "model": "gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": "Hello"}],
+        mock_flag: True,
+    }
+    llm_router = MagicMock()
+    llm_router.acompletion.return_value = "ok"
+
+    await route_request(data, llm_router, None, "acompletion")
+
+    call_kwargs = llm_router.acompletion.call_args[1]
+    assert mock_flag not in call_kwargs
+    # The flag is also gone from the original data dict so any subsequent
+    # processing (e.g. logging) doesn't see it either.
+    assert mock_flag not in data
 
 
 @pytest.mark.parametrize(
