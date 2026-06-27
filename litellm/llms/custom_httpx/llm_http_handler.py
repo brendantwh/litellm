@@ -26,6 +26,7 @@ from litellm._logging import _redact_string, verbose_logger
 from litellm.anthropic_beta_headers_manager import update_headers_with_filtered_beta
 from litellm.constants import REALTIME_WEBSOCKET_MAX_MESSAGE_SIZE_BYTES
 from litellm.litellm_core_utils.realtime_streaming import RealTimeStreaming
+from litellm.litellm_core_utils.url_utils import encode_url_path_segment
 from litellm.llms.base_llm.anthropic_messages.transformation import (
     BaseAnthropicMessagesConfig,
 )
@@ -4633,6 +4634,7 @@ class BaseLLMHTTPHandler:
         fingerprints: List[str],
         fingerprint: str,
         stream: bool = False,
+        callback: Optional[Any] = None,
     ) -> Any:
         from litellm.anthropic_interface import messages as anthropic_messages
 
@@ -4674,7 +4676,7 @@ class BaseLLMHTTPHandler:
         kwargs_for_followup["max_agentic_loops"] = max_loops
         kwargs_for_followup["_agentic_loop_fingerprints"] = fingerprints + [fingerprint]
 
-        return await anthropic_messages.acreate(
+        response = await anthropic_messages.acreate(
             **{
                 "max_tokens": max_tokens,
                 "messages": patch.messages,
@@ -4684,6 +4686,23 @@ class BaseLLMHTTPHandler:
                 **kwargs_for_followup,
             }
         )
+
+        if callback is not None:
+            try:
+                response = await callback.async_post_agentic_loop_response_hook(
+                    response=response, plan=plan, kwargs=kwargs
+                )
+            except Exception as e:
+                _call_id = getattr(logging_obj, "litellm_call_id", "unknown")
+                verbose_logger.exception(
+                    "LiteLLM.AgenticHookError: Exception in "
+                    "async_post_agentic_loop_response_hook [call_id=%s model=%s]: %s",
+                    _call_id,
+                    model,
+                    str(e),
+                )
+
+        return response
 
     async def _execute_chat_completion_agentic_plan(
         self,
@@ -4868,6 +4887,7 @@ class BaseLLMHTTPHandler:
                     fingerprints=fingerprints,
                     fingerprint=fingerprint,
                     stream=stream,
+                    callback=callback,
                 )
             except Exception as e:
                 _call_id = getattr(logging_obj, "litellm_call_id", "unknown")
@@ -5254,7 +5274,6 @@ class BaseLLMHTTPHandler:
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
-                "OpenAI-Beta": "realtime=v1",
             }
 
         if extra_headers:
@@ -5578,6 +5597,9 @@ class BaseLLMHTTPHandler:
             litellm_params=litellm_params,
             headers=headers,
         )
+        data = image_edit_provider_config.finalize_image_edit_request_data(
+            data, api_base
+        )
 
         ## LOGGING
         logging_obj.pre_call(
@@ -5675,6 +5697,9 @@ class BaseLLMHTTPHandler:
             image_edit_optional_request_params=image_edit_optional_request_params,
             litellm_params=litellm_params,
             headers=headers,
+        )
+        data = image_edit_provider_config.finalize_image_edit_request_data(
+            data, api_base
         )
 
         ## LOGGING
@@ -8948,7 +8973,10 @@ class BaseLLMHTTPHandler:
             litellm_params=dict(litellm_params),
         )
 
-        url = f"{api_base}/{vector_store_id}"
+        encoded_vector_store_id = encode_url_path_segment(
+            vector_store_id, field_name="vector_store_id"
+        )
+        url = f"{api_base}/{encoded_vector_store_id}"
 
         logging_obj.pre_call(
             input="",
@@ -9015,7 +9043,10 @@ class BaseLLMHTTPHandler:
             litellm_params=dict(litellm_params),
         )
 
-        url = f"{api_base}/{vector_store_id}"
+        encoded_vector_store_id = encode_url_path_segment(
+            vector_store_id, field_name="vector_store_id"
+        )
+        url = f"{api_base}/{encoded_vector_store_id}"
 
         logging_obj.pre_call(
             input="",
@@ -9214,7 +9245,10 @@ class BaseLLMHTTPHandler:
             litellm_params=dict(litellm_params),
         )
 
-        url = f"{api_base}/{vector_store_id}"
+        encoded_vector_store_id = encode_url_path_segment(
+            vector_store_id, field_name="vector_store_id"
+        )
+        url = f"{api_base}/{encoded_vector_store_id}"
 
         request_body: Dict[str, Any] = dict(vector_store_update_optional_params)
 
@@ -9297,7 +9331,10 @@ class BaseLLMHTTPHandler:
             litellm_params=dict(litellm_params),
         )
 
-        url = f"{api_base}/{vector_store_id}"
+        encoded_vector_store_id = encode_url_path_segment(
+            vector_store_id, field_name="vector_store_id"
+        )
+        url = f"{api_base}/{encoded_vector_store_id}"
 
         request_body: Dict[str, Any] = dict(vector_store_update_optional_params)
 
@@ -9363,7 +9400,10 @@ class BaseLLMHTTPHandler:
             litellm_params=dict(litellm_params),
         )
 
-        url = f"{api_base}/{vector_store_id}"
+        encoded_vector_store_id = encode_url_path_segment(
+            vector_store_id, field_name="vector_store_id"
+        )
+        url = f"{api_base}/{encoded_vector_store_id}"
 
         logging_obj.pre_call(
             input="",
@@ -9428,7 +9468,10 @@ class BaseLLMHTTPHandler:
             litellm_params=dict(litellm_params),
         )
 
-        url = f"{api_base}/{vector_store_id}"
+        encoded_vector_store_id = encode_url_path_segment(
+            vector_store_id, field_name="vector_store_id"
+        )
+        url = f"{api_base}/{encoded_vector_store_id}"
 
         logging_obj.pre_call(
             input="",

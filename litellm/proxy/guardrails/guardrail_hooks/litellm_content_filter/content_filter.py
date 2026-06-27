@@ -1862,31 +1862,21 @@ class ContentFilterGuardrail(CustomGuardrail):
         request_data: dict,
     ) -> AsyncGenerator[ModelResponseStream, None]:
         """
-        Streaming hook to check each chunk as it's yielded.
+        Process streaming response chunks and check for blocked content.
 
-        This implementation buffers content to handle patterns split across chunks
-        (e.g. "4242" + "4242..."). It maintains a sliding window overlap.
         For BLOCK action: Raises HTTPException immediately when blocked content is detected.
+        For MASK action: Content is buffered to handle patterns split across chunks.
 
         At stream end (including when BLOCK raises HTTPException), write a
         standard_logging_guardrail_information entry into request_data["metadata"]
         so the post-call log row reaches standard_logging_object.guardrail_information
         and the UI Request Lifecycle panel. Mirrors apply_guardrail's finally-block
         contract.
-
-        Args:
-            user_api_key_dict: User API key authentication
-            response: Async generator of response chunks
-            request_data: Original request data
-
-        Yields:
-            Checked and potentially masked chunks
         """
-        import copy
-
-        verbose_proxy_logger.debug(
-            "ContentFilterGuardrail: Running streaming check (buffered mode)"
-        )
+        accumulated_text_by_choice: Dict[int, str] = {}
+        yielded_masked_text_len_by_choice: Dict[int, int] = {}
+        latest_detections_by_choice: Dict[int, List[ContentFilterDetection]] = {}
+        buffer_size = 50  # Increased buffer to catch patterns split across many chunks
 
         start_time = datetime.now()
         detections: List[ContentFilterDetection] = []
@@ -1894,144 +1884,99 @@ class ContentFilterGuardrail(CustomGuardrail):
         status: GuardrailStatus = "success"
         exception_str: str = ""
 
-        # Buffer settings
-        # Keep enough chars to cover split patterns (CCs are ~19 chars)
-        OVERLAP_LENGTH = 30
-        buffer = ""
-        last_chunk_template: Optional[ModelResponseStream] = None
+        verbose_proxy_logger.info(
+            f"ContentFilterGuardrail: Starting robust streaming masking for model {request_data.get('model')}"
+        )
 
         try:
-            chunk_count = 0
-            async for chunk in response:
-                chunk_count += 1
-                # Debug logging for chunk type to diagnose issues
-                if chunk_count == 1:
-                    verbose_proxy_logger.debug(
-                        f"ContentFilterGuardrail: First chunk type: {type(chunk)}"
-                    )
+            async for item in response:
+                if isinstance(item, ModelResponseStream) and item.choices:
+                    for choice in item.choices:
+                        if not (hasattr(choice, "delta") and choice.delta):
+                            continue
 
-                # Pass through non-Standard chunks or those without choices
-                # Support both object and dict access for broader compatibility
-                is_valid_object = isinstance(chunk, ModelResponseStream) and chunk.choices
-                is_valid_dict = (
-                    isinstance(chunk, dict) and "choices" in chunk and chunk["choices"]
-                )
+                        choice_index = getattr(choice, "index", 0)
+                        if not isinstance(choice_index, int):
+                            choice_index = 0
 
-                if not is_valid_object and not is_valid_dict:
-                    yield chunk
-                    continue
+                        content = getattr(choice.delta, "content", None)
+                        is_final = bool(getattr(choice, "finish_reason", None))
+                        if isinstance(content, str) and content:
+                            accumulated_text_by_choice[choice_index] = (
+                                accumulated_text_by_choice.get(choice_index, "")
+                                + content
+                            )
+                        elif not is_final:
+                            continue
 
-                # We assume single choice streaming for simplicity in guardrails
-                if is_valid_object:
-                    choice = chunk.choices[0]
-                    # Save chunk as template
-                    last_chunk_template = chunk
-                    finish_reason = choice.finish_reason
-                else:
-                    # Handle dict case
-                    choice = chunk["choices"][0]
-                    last_chunk_template = chunk
-                    finish_reason = choice.get("finish_reason")
+                        text_to_check = accumulated_text_by_choice.get(choice_index, "")
+                        if not text_to_check:
+                            continue
 
-                # Helper to check if this is a content chunk
-                content = None
-                if hasattr(choice, "delta"):
-                    # Object access
-                    if choice.delta.content and isinstance(choice.delta.content, str):
-                        content = choice.delta.content
-                elif isinstance(choice, dict) and "delta" in choice:
-                    # Dict access
-                    delta = choice["delta"]
-                    if isinstance(delta, dict) and delta.get("content"):
-                        content = delta["content"]
-                    elif hasattr(delta, "content") and delta.content: # Pydantic inside dict?
-                         content = delta.content
+                        # Add a space at the end if it's the final chunk to trigger word boundaries (\b)
+                        text_to_scan = text_to_check + (" " if is_final else "")
+                        choice_detections: List[ContentFilterDetection] = []
 
-                if content:
-                    buffer += content
+                        try:
+                            # _filter_single_text scans the whole accumulated
+                            # choice buffer every chunk, so previous-chunk
+                            # matches are guaranteed to be re-found. Keeping
+                            # only each choice's latest scan avoids duplicate
+                            # detections in the final log row.
+                            masked_text = self._filter_single_text(
+                                text_to_scan, detections=choice_detections
+                            )
+                            if is_final and masked_text.endswith(" "):
+                                masked_text = masked_text[:-1]
+                            latest_detections_by_choice[choice_index] = (
+                                choice_detections
+                            )
+                        except HTTPException:
+                            latest_detections_by_choice[choice_index] = (
+                                choice_detections
+                            )
+                            raise
+                        except Exception as e:
+                            verbose_proxy_logger.error(
+                                f"ContentFilterGuardrail: Error in masking: {e}"
+                            )
+                            masked_text = text_to_scan  # Fallback to current text
 
-                    # Check if we should flush due to finish_reason co-occurring with content
-                    should_flush_final = finish_reason is not None
+                        # Determine how much can be safely yielded
+                        if is_final:
+                            safe_to_yield_len = len(masked_text)
+                        else:
+                            safe_to_yield_len = max(0, len(masked_text) - buffer_size)
 
-                    # If buffer is small, allow it to grow unless it's very long
-                    # But we must yield if buffer > OVERLAP or if we are finishing
-                    if len(buffer) < OVERLAP_LENGTH and not should_flush_final:
-                        continue
-
-                    # Process buffer
-                    try:
-                        detections.clear()
-                        processed_buffer = self._filter_single_text(buffer, detections=detections)
-                    except HTTPException as e:
-                        verbose_proxy_logger.warning(
-                            f"ContentFilterGuardrail: Blocked streaming chunk: {e.detail}"
+                        yielded_masked_text_len = yielded_masked_text_len_by_choice.get(
+                            choice_index, 0
                         )
-                        raise
-
-                    # Determine what to yield vs keep
-                    if should_flush_final:
-                        # Flush EVERYTHING
-                        to_yield = processed_buffer
-                        buffer = ""  # Clear buffer
-                    else:
-                        # Keep overlap
-                        split_index = len(processed_buffer) - OVERLAP_LENGTH
-
-                        if split_index > 0:
-                            to_yield = processed_buffer[:split_index]
-                            buffer = processed_buffer[split_index:]
+                        if safe_to_yield_len > yielded_masked_text_len:
+                            new_masked_content = masked_text[
+                                yielded_masked_text_len:safe_to_yield_len
+                            ]
+                            choice.delta.content = new_masked_content
+                            yielded_masked_text_len_by_choice[choice_index] = (
+                                safe_to_yield_len
+                            )
                         else:
-                            # Buffer is small
-                            buffer = processed_buffer
-                            to_yield = None
+                            # Hold content by yielding empty content on this choice
+                            # while preserving chunk metadata and other choices.
+                            choice.delta.content = ""
 
-                    # Yield the safe part
-                    if to_yield:
-                        new_chunk = copy.deepcopy(last_chunk_template)
-                        if is_valid_object:
-                            if new_chunk.choices:
-                                new_chunk.choices[0].delta.content = to_yield
-                                if not should_flush_final:
-                                    new_chunk.choices[0].finish_reason = None
-                        else:
-                            # Dict handling
-                            if new_chunk.get("choices"):
-                                new_chunk["choices"][0]["delta"]["content"] = to_yield
-                                if not should_flush_final:
-                                    new_chunk["choices"][0]["finish_reason"] = None
-                        yield new_chunk
-
+                    yield item
                 else:
-                    # No content (e.g. finish_reason only)
-                    if finish_reason:
-                        # Flush buffer
-                        if buffer:
-                            try:
-                                detections.clear()
-                                final_content = self._filter_single_text(buffer, detections=detections)
-                                if final_content:
-                                    new_chunk = copy.deepcopy(last_chunk_template)
-                                    if is_valid_object:
-                                        if new_chunk.choices:
-                                            new_chunk.choices[0].delta.content = final_content
-                                            new_chunk.choices[0].finish_reason = None
-                                    else:
-                                        # Dict handling
-                                        if new_chunk.get("choices"):
-                                            new_chunk["choices"][0]["delta"]["content"] = final_content
-                                            new_chunk["choices"][0]["finish_reason"] = None
-                                    yield new_chunk
-                            except HTTPException:
-                                raise
+                    # Not a ModelResponseStream or no choices - yield as is
+                    yield item
 
-                        # Yield the original finish chunk
-                        yield chunk
-                    else:
-                        # Intermediate non-content chunk
-                        yield chunk
-
-            verbose_proxy_logger.debug("ContentFilterGuardrail: Streaming check completed")
-
+            # Any remaining content (should have been handled by is_final, but just in case)
+            if any(
+                yielded_masked_text_len_by_choice.get(choice_index, 0)
+                < len(accumulated_text)
+                for choice_index, accumulated_text in accumulated_text_by_choice.items()
+            ):
+                # We already reached the end of the generator
+                pass
         except HTTPException:
             status = "guardrail_intervened"
             raise
@@ -2040,6 +1985,11 @@ class ContentFilterGuardrail(CustomGuardrail):
             exception_str = str(e)
             raise e
         finally:
+            detections = [
+                detection
+                for choice_detections in latest_detections_by_choice.values()
+                for detection in choice_detections
+            ]
             self._count_masked_entities(detections, masked_entity_count)
             self._log_guardrail_information(
                 request_data=request_data,
