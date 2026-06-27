@@ -24,7 +24,7 @@ from litellm.litellm_core_utils.core_helpers import (
     get_litellm_metadata_from_kwargs,
     reconstruct_model_name,
 )
-from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
+from litellm.litellm_core_utils.safe_json_dumps import safe_dumps, strip_null_bytes
 from litellm.proxy._types import SpendLogsMetadata, SpendLogsPayload
 from litellm.proxy.spend_tracking.spend_log_error_logger import spend_log_error
 from litellm.proxy.utils import PrismaClient, hash_token
@@ -79,6 +79,7 @@ def _get_spend_logs_metadata(
     cold_storage_object_key: Optional[str] = None,
     litellm_overhead_time_ms: Optional[float] = None,
     cost_breakdown: Optional[CostBreakdown] = None,
+    litellm_call_id: Optional[str] = None,
 ) -> SpendLogsMetadata:
     if metadata is None:
         return SpendLogsMetadata(
@@ -109,6 +110,7 @@ def _get_spend_logs_metadata(
             attempted_retries=None,
             max_retries=None,
             cost_breakdown=None,
+            litellm_call_id=litellm_call_id,
         )
     verbose_proxy_logger.debug(
         "getting payload for SpendLogs, available keys in metadata: "
@@ -133,6 +135,7 @@ def _get_spend_logs_metadata(
     clean_metadata["cold_storage_object_key"] = cold_storage_object_key
     clean_metadata["litellm_overhead_time_ms"] = litellm_overhead_time_ms
     clean_metadata["cost_breakdown"] = cost_breakdown
+    clean_metadata["litellm_call_id"] = litellm_call_id
 
     return clean_metadata
 
@@ -228,9 +231,7 @@ def _extract_usage_for_ocr_call(response_obj: Any, response_obj_dict: dict) -> d
         return {}
 
 
-def get_logging_payload(  # noqa: PLR0915
-    kwargs, response_obj, start_time, end_time
-) -> SpendLogsPayload:
+def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogsPayload:
     if kwargs is None:
         kwargs = {}
 
@@ -264,6 +265,13 @@ def get_logging_payload(  # noqa: PLR0915
             usage = dict(_usage)
         elif isinstance(_usage, dict):
             usage = _usage
+
+    # A request that failed mid-stream has no usable response_obj usage, but the
+    # streaming handler may have recovered the usage from the chunks already
+    # delivered. Honor that override so the partial usage lands in spend tracking.
+    _combined_usage = kwargs.get("combined_usage_object")
+    if not usage and isinstance(_combined_usage, litellm.Usage):
+        usage = _combined_usage.model_dump()
 
     id = get_spend_logs_id(call_type or "acompletion", response_obj_dict, kwargs)
     standard_logging_payload = cast(
@@ -304,7 +312,7 @@ def get_logging_payload(  # noqa: PLR0915
     # BUG FIX: Don't overwrite api_key when standard_logging_payload is None
     # The api_key was already extracted from metadata (line 243) and hashed (lines 256-259)
     request_tags = (
-        json.dumps(metadata.get("tags", []))
+        safe_dumps(metadata.get("tags", []))
         if isinstance(metadata.get("tags", []), list)
         else "[]"
     )
@@ -312,7 +320,7 @@ def get_logging_payload(  # noqa: PLR0915
         standard_logging_payload is not None
         and standard_logging_payload.get("request_tags") is not None
     ):  # use 'tags' from standard logging payload instead
-        request_tags = json.dumps(standard_logging_payload["request_tags"])
+        request_tags = safe_dumps(standard_logging_payload["request_tags"])
 
     _model_id = metadata.get("model_info", {}).get("id", "")
     _model_group = metadata.get("model_group", "")
@@ -377,6 +385,10 @@ def get_logging_payload(  # noqa: PLR0915
             standard_logging_payload.get("cost_breakdown", None)
             if standard_logging_payload is not None
             else None
+        ),
+        litellm_call_id=cast(
+            Optional[str],
+            kwargs.get("litellm_call_id") or litellm_params.get("litellm_call_id"),
         ),
     )
 
@@ -606,7 +618,7 @@ def _get_messages_for_spend_logs_payload(
                 messages = standard_logging_payload.get("messages")
                 if messages is not None:
                     try:
-                        return json.dumps(messages, default=str)
+                        return safe_dumps(messages)
                     except Exception:
                         return "{}"
     return "{}"
@@ -976,7 +988,7 @@ def _get_proxy_server_request_for_spend_logs_payload(
                     perform_redaction(model_call_details=_request_body, result=None)
 
             _request_body = _sanitize_request_body_for_spend_logs_payload(_request_body)
-            _request_body_json_str = json.dumps(_request_body, default=str)
+            _request_body_json_str = safe_dumps(_request_body)
             if LITELLM_TRUNCATED_PAYLOAD_FIELD in _request_body_json_str:
                 verbose_proxy_logger.info(
                     "Spend Log: request body was truncated before storing in DB. %s",
@@ -1059,7 +1071,7 @@ def _get_response_for_spend_logs_payload(
         if sanitized_response is None:
             return "{}"
         if isinstance(sanitized_response, str):
-            result_str = sanitized_response
+            result_str = strip_null_bytes(sanitized_response)
         else:
             result_str = safe_dumps(sanitized_response)
         if LITELLM_TRUNCATED_PAYLOAD_FIELD in result_str:

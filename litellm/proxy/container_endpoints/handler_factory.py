@@ -196,10 +196,12 @@ async def _process_binary_request(
     )
     data: Dict[str, Any] = {
         "file_id": file_id,
-        **get_container_forwarding_params(
-            container_id=container_id,
-            original_container_id=original_container_id,
-            custom_llm_provider=resolved_provider,
+        **(
+            await get_container_forwarding_params(
+                container_id=container_id,
+                original_container_id=original_container_id,
+                custom_llm_provider=resolved_provider,
+            )
         ),
     }
     processor = ProxyBaseLLMRequestProcessing(data=data)
@@ -316,7 +318,7 @@ async def _process_multipart_upload_request(
     )
 
     data.update(
-        get_container_forwarding_params(
+        await get_container_forwarding_params(
             container_id=container_id,
             original_container_id=original_container_id,
             custom_llm_provider=resolved_provider,
@@ -388,15 +390,16 @@ async def _process_request(
 
     # Validate container_id ownership if present in path_params.
     if "container_id" in path_params:
-        original_container_id, resolved_provider = (
-            await assert_user_can_access_container(
-                container_id=path_params["container_id"],
-                user_api_key_dict=user_api_key_dict,
-                custom_llm_provider=custom_llm_provider,
-            )
+        (
+            original_container_id,
+            resolved_provider,
+        ) = await assert_user_can_access_container(
+            container_id=path_params["container_id"],
+            user_api_key_dict=user_api_key_dict,
+            custom_llm_provider=custom_llm_provider,
         )
         data.update(
-            get_container_forwarding_params(
+            await get_container_forwarding_params(
                 container_id=path_params["container_id"],
                 original_container_id=original_container_id,
                 custom_llm_provider=resolved_provider,
