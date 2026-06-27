@@ -79,12 +79,20 @@ class CachingHandlerResponse(BaseModel):
 
     cached_result: Optional[Any] = None
     final_embedding_cached_response: Optional[EmbeddingResponse] = None
-    embedding_all_elements_cache_hit: bool = (
-        False  # this is set to True when all elements in the list have a cache hit in the embedding cache, if true return the final_embedding_cached_response no need to make an API call
-    )
+    embedding_all_elements_cache_hit: bool = False  # this is set to True when all elements in the list have a cache hit in the embedding cache, if true return the final_embedding_cached_response no need to make an API call
 
 
 in_memory_cache_obj = InMemoryCache()
+
+
+def _is_chat_completion_cached_dict(cached_result: dict) -> bool:
+    cached_id = cached_result.get("id")
+    if isinstance(cached_id, str) and cached_id.startswith("chatcmpl"):
+        return True
+    obj = cached_result.get("object")
+    if isinstance(obj, str):
+        return obj.startswith("chat.completion")
+    return "choices" in cached_result
 
 
 def _should_defer_streaming_cache_hit_callbacks(*, kwargs: Dict[str, Any]) -> bool:
@@ -155,10 +163,11 @@ class LLMCachingHandler:
         """
         # Check if caching should be performed BEFORE doing expensive operations
         if (
-            (kwargs.get("caching", None) is None and litellm.cache is not None)
-            or kwargs.get("caching", False) is True
-        ) and (
-            kwargs.get("cache", {}).get("no-cache", False) is not True
+            (
+                (kwargs.get("caching", None) is None and litellm.cache is not None)
+                or kwargs.get("caching", False) is True
+            )
+            and (kwargs.get("cache", {}).get("no-cache", False) is not True)
         ):  # allow users to control returning cached responses from the completion function
             args = args or ()
             final_embedding_cached_response: Optional[EmbeddingResponse] = None
@@ -446,7 +455,10 @@ class LLMCachingHandler:
                             index=idx,
                             object="embedding",
                         )
-                    if isinstance(kwargs_input_as_list[idx], str):
+                    cached_prompt_tokens = cr.get("prompt_tokens")
+                    if cached_prompt_tokens is not None:
+                        prompt_tokens += cached_prompt_tokens
+                    elif isinstance(kwargs_input_as_list[idx], str):
                         from litellm.utils import token_counter
 
                         prompt_tokens += token_counter(
@@ -861,27 +873,47 @@ class LLMCachingHandler:
         elif (call_type == "aresponses" or call_type == "responses") and isinstance(
             cached_result, dict
         ):
-            from litellm.responses.streaming_iterator import (
-                CachedResponsesAPIStreamingIterator,
-            )
-
-            response_obj = ResponsesAPIResponse(**cached_result)
-            if (
-                hasattr(response_obj, "_hidden_params")
-                and response_obj._hidden_params is not None
-                and isinstance(response_obj._hidden_params, dict)
-            ):
-                response_obj._hidden_params["cache_hit"] = True
-
-            if kwargs.get("stream", False) is True:
-                cached_result = CachedResponsesAPIStreamingIterator(
-                    response=response_obj,
-                    logging_obj=logging_obj,
-                    request_data=kwargs,
-                    call_type=call_type,
-                )
+            use_chat_completion_cache = _is_chat_completion_cached_dict(cached_result)
+            if use_chat_completion_cache:
+                if kwargs.get("stream", False) is True:
+                    bridge_call_type = (
+                        CallTypes.acompletion.value
+                        if call_type == "aresponses"
+                        else CallTypes.completion.value
+                    )
+                    cached_result = self._convert_cached_stream_response(
+                        cached_result=cached_result,
+                        call_type=bridge_call_type,
+                        logging_obj=logging_obj,
+                        model=model,
+                    )
+                else:
+                    cached_result = convert_to_model_response_object(
+                        response_object=cached_result,
+                        model_response_object=ModelResponse(),
+                    )
             else:
-                cached_result = response_obj
+                from litellm.responses.streaming_iterator import (
+                    CachedResponsesAPIStreamingIterator,
+                )
+
+                response_obj = ResponsesAPIResponse(**cached_result)
+                if (
+                    hasattr(response_obj, "_hidden_params")
+                    and response_obj._hidden_params is not None
+                    and isinstance(response_obj._hidden_params, dict)
+                ):
+                    response_obj._hidden_params["cache_hit"] = True
+
+                if kwargs.get("stream", False) is True:
+                    cached_result = CachedResponsesAPIStreamingIterator(
+                        response=response_obj,
+                        logging_obj=logging_obj,
+                        request_data=kwargs,
+                        call_type=call_type,
+                    )
+                else:
+                    cached_result = response_obj
 
         if (
             hasattr(cached_result, "_hidden_params")

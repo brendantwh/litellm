@@ -1,7 +1,18 @@
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    FrozenSet,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 import litellm
 from litellm._logging import verbose_logger
@@ -64,6 +75,9 @@ HTTP_RESPONSE_STATUS_CODE_ATTRIBUTE = "http.response.status_code"
 HTTP_ROUTE_ATTRIBUTE = "http.route"
 URL_PATH_ATTRIBUTE = "url.path"
 PREPROCESSING_DURATION_MS_ATTRIBUTE = "litellm.preprocessing.duration_ms"
+TEAM_METADATA_ATTRIBUTE = "litellm.team.metadata"
+MODEL_GROUP_ATTRIBUTE = "litellm.model_group"
+PROVIDER_MODEL_ATTRIBUTE = "litellm.provider.model"
 # Remove the hardcoded LITELLM_RESOURCE dictionary - we'll create it properly later
 RAW_REQUEST_SPAN_NAME = "raw_gen_ai_request"
 LITELLM_REQUEST_SPAN_NAME = "litellm_request"
@@ -78,6 +92,132 @@ _VALID_CAPTURE_MODES = {
     CAPTURE_MODE_EVENT_ONLY,
     CAPTURE_MODE_SPAN_AND_EVENT,
 }
+
+METRIC_METADATA_KEYS: Tuple[str, ...] = (
+    "user_api_key_hash",
+    "user_api_key_alias",
+    "user_api_key_team_id",
+    "user_api_key_org_id",
+    "user_api_key_user_id",
+    "user_api_key_team_alias",
+    "user_api_key_user_email",
+    "spend_logs_metadata",
+    "requester_ip_address",
+    "requester_metadata",
+    "user_api_key_end_user_id",
+    "prompt_management_metadata",
+    "applied_guardrails",
+    "mcp_tool_call_metadata",
+    "vector_store_request_metadata",
+)
+
+TOKEN_TYPE_ATTRIBUTE: str = "gen_ai.token.type"
+
+VALID_METRIC_ATTRIBUTE_NAMES: FrozenSet[str] = frozenset(
+    (
+        "gen_ai.operation.name",
+        "gen_ai.system",
+        "gen_ai.request.model",
+        "gen_ai.framework",
+        "hidden_params",
+    )
+    + tuple(f"metadata.{key}" for key in METRIC_METADATA_KEYS)
+)
+
+
+@dataclass(frozen=True)
+class OTELMetricAttributeFilter:
+    include_list: Optional[List[str]] = None
+    exclude_list: Optional[List[str]] = None
+
+
+def _build_metric_attribute_filter(value: Any) -> OTELMetricAttributeFilter:
+    if isinstance(value, OTELMetricAttributeFilter):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError(
+            "otel.attributes must be a mapping with optional 'include_list' / "
+            f"'exclude_list', got {type(value).__name__}"
+        )
+    return OTELMetricAttributeFilter(
+        include_list=value.get("include_list"),
+        exclude_list=value.get("exclude_list"),
+    )
+
+
+def _resolve_metric_attribute_filter(
+    attributes: Optional[OTELMetricAttributeFilter],
+) -> Tuple[Optional[FrozenSet[str]], Optional[FrozenSet[str]]]:
+    if attributes is None:
+        return None, None
+    include = attributes.include_list or None
+    exclude = attributes.exclude_list or None
+    if include and exclude:
+        raise ValueError(
+            "otel.attributes: include_list and exclude_list are mutually exclusive"
+        )
+    requested = include or exclude or []
+    if TOKEN_TYPE_ATTRIBUTE in requested:
+        raise ValueError(
+            f"otel.attributes: {TOKEN_TYPE_ATTRIBUTE} is a structural token-usage "
+            "discriminator and cannot be filtered"
+        )
+    unknown = sorted(
+        name for name in requested if name not in VALID_METRIC_ATTRIBUTE_NAMES
+    )
+    if unknown:
+        raise ValueError(
+            f"otel.attributes: unknown attribute name(s) {unknown}. "
+            f"Valid names: {sorted(VALID_METRIC_ATTRIBUTE_NAMES)}"
+        )
+    return (
+        frozenset(include) if include else None,
+        frozenset(exclude) if exclude else None,
+    )
+
+
+def _normalize_team_metadata_keys(value: Any) -> List[str]:
+    """Coerce a team-metadata allowlist from a list or comma-separated string.
+
+    config.yaml passes a YAML list; an env var passes a comma-separated string.
+    Both collapse to a list of stripped, non-empty keys.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+_FREEZE_MAX_DEPTH = 16
+
+HashableScope = Union[
+    str,
+    int,
+    float,
+    bool,
+    bytes,
+    None,
+    tuple["HashableScope", ...],
+    frozenset["HashableScope"],
+]
+
+
+def _freeze_for_dedupe(value: object, _depth: int = 0) -> HashableScope:
+    if _depth >= _FREEZE_MAX_DEPTH:
+        return repr(value)
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_for_dedupe(item, _depth + 1) for item in value)
+    if isinstance(value, set):
+        return frozenset(_freeze_for_dedupe(item, _depth + 1) for item in value)
+    if isinstance(value, dict):
+        return frozenset(
+            (_freeze_for_dedupe(key, _depth + 1), _freeze_for_dedupe(item, _depth + 1))
+            for key, item in value.items()
+        )
+    if isinstance(value, (str, int, float, bytes)) or value is None:
+        return value
+    return repr(value)
 
 
 @dataclass
@@ -97,6 +237,13 @@ class OpenTelemetryConfig:
     # One of NO_CONTENT, SPAN_ONLY, EVENT_ONLY, SPAN_AND_EVENT (or "true" as legacy alias).
     capture_message_content: Optional[str] = None
     semconv_stability_opt_in: Set[OTELSemconvCategory] = field(default_factory=set)
+    # Sub-keys of the team's free-form metadata stamped onto the inference span
+    # under ``litellm.team.metadata``. Empty by default so none of a team's
+    # metadata leaves the process until explicitly allowlisted.
+    baggage_team_metadata_keys: List[str] = field(default_factory=list)
+    # Prometheus-style include/exclude control over which attributes are stamped
+    # on emitted metrics, to cap metric cardinality.
+    attributes: Optional[OTELMetricAttributeFilter] = None
 
     def __post_init__(self) -> None:
         # If endpoint is specified but exporter is still the default "console",
@@ -126,6 +273,11 @@ class OpenTelemetryConfig:
         # single source of truth: the union of programmatic and env categories.
         self.semconv_stability_opt_in |= parse_semconv_opt_in(
             os.getenv(OTEL_SEMCONV_STABILITY_OPT_IN_ENV)
+        )
+        self.baggage_team_metadata_keys = _normalize_team_metadata_keys(
+            self.baggage_team_metadata_keys
+        ) or _normalize_team_metadata_keys(
+            os.getenv("LITELLM_OTEL_BAGGAGE_TEAM_METADATA_KEYS")
         )
 
     @classmethod
@@ -185,11 +337,30 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         meter_provider: Optional[Any] = None,
         **kwargs,
     ):
+        team_metadata_keys_override = kwargs.pop("baggage_team_metadata_keys", None)
+        metric_attributes_override = kwargs.pop("attributes", None)
         if config is None:
             config = OpenTelemetryConfig.from_env()
+        if team_metadata_keys_override is not None:
+            config.baggage_team_metadata_keys = _normalize_team_metadata_keys(
+                team_metadata_keys_override
+            )
+        if metric_attributes_override is not None:
+            config.attributes = _build_metric_attribute_filter(
+                metric_attributes_override
+            )
 
         self.config = config
         self.callback_name = callback_name
+        # Resolved on first metric record, not here: the proxy populates
+        # callback_settings.otel.attributes after this logger is constructed, so
+        # reading it now would miss it. An explicit config is validated eagerly so
+        # a bad config still fails at startup.
+        self._metric_attr_include: Optional[FrozenSet[str]] = None
+        self._metric_attr_exclude: Optional[FrozenSet[str]] = None
+        self._metric_attr_filter_resolved = False
+        if config.attributes is not None:
+            self._ensure_metric_attribute_filter()
         self.OTEL_EXPORTER = self.config.exporter
         self.OTEL_ENDPOINT = self.config.endpoint
         self.OTEL_HEADERS = self.config.headers
@@ -673,6 +844,15 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         if parent_otel_span is not None:
             parent_otel_span.set_status(Status(StatusCode.ERROR))
 
+            # Stamp team attributes onto the SERVER (root) span too, so the
+            # trace root is team-filterable on the failure path like the
+            # child exception span below.
+            self._set_team_attributes_on_span(
+                span=parent_otel_span,
+                team_id=user_api_key_dict.team_id,
+                team_alias=user_api_key_dict.team_alias,
+            )
+
             # Stamp structured error attrs on the SERVER span itself; the
             # failure path otherwise only sets its status (_handle_failure
             # records on the litellm_request child span). Inline import:
@@ -693,6 +873,14 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
                 },
             )
 
+            # _record_exception_on_span only stamps when error_code is set;
+            # bare TypeError etc. has none, and the span is about to be ended.
+            error_code = (
+                error_information.get("error_code") if error_information else None
+            )
+            if not error_code:
+                self.set_response_status_code_attribute(parent_otel_span, 500)
+
             # Pre-request latency (request_data carries the propagated
             # metadata on the failure path; omitted if it failed before handoff).
             self.set_preprocessing_duration_attribute(parent_otel_span, request_data)
@@ -709,11 +897,64 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
                 key="exception",
                 value=str(original_exception),
             )
+            self._set_team_attributes_on_span(
+                span=exception_logging_span,
+                team_id=user_api_key_dict.team_id,
+                team_alias=user_api_key_dict.team_alias,
+            )
             exception_logging_span.set_status(Status(StatusCode.ERROR))
             exception_logging_span.end(end_time=self._to_ns(datetime.now()))
 
+            # Emit guardrail spans for any guardrail invocations that
+            # ran during this request. _handle_failure typically does this,
+            # but for pre-call guardrail blocks the standard_logging_object
+            # may not carry guardrail_information by the time _handle_failure
+            # fires (the data lives only in request_data["metadata"]). Pull
+            # directly from request_data so the span is recorded either way;
+            # _emit_once dedupes if _handle_failure already emitted it.
+            self._emit_guardrail_spans_from_request_data(
+                request_data=request_data,
+                parent_span=parent_otel_span,
+            )
+
             # End Parent OTEL Sspan
             parent_otel_span.end(end_time=self._to_ns(datetime.now()))
+
+    def _emit_guardrail_spans_from_request_data(
+        self,
+        request_data: dict,
+        parent_span: Optional[Any],
+    ) -> None:
+        """Emit ``guardrail`` spans from ``request_data["metadata"]
+        ["standard_logging_guardrail_information"]``.
+
+        Routed through ``_create_guardrail_span`` so the dedupe state in
+        ``_otel_internal`` is honoured — if ``_handle_failure`` already
+        emitted these spans for the same kwargs, this is a no-op.
+        """
+        from opentelemetry import trace as _trace
+
+        metadata = (request_data or {}).get("metadata") or {}
+        guardrail_information = metadata.get("standard_logging_guardrail_information")
+        if not guardrail_information:
+            return
+
+        # _create_guardrail_span reads guardrail_information from
+        # kwargs["standard_logging_object"] and shares its dedupe state via
+        # kwargs["litellm_params"]["metadata"]["_otel_internal"]. Pass the
+        # SAME metadata dict the proxy populated so _handle_failure and
+        # this hook see the same dedupe markers.
+        kwargs: Dict[str, Any] = {
+            "litellm_params": {"metadata": metadata},
+            "standard_logging_object": {
+                "guardrail_information": guardrail_information,
+                "metadata": metadata,
+            },
+        }
+        context = (
+            _trace.set_span_in_context(parent_span) if parent_span is not None else None
+        )
+        self._create_guardrail_span(kwargs=kwargs, context=context)
 
     async def async_post_call_success_hook(
         self,
@@ -735,11 +976,6 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
 
             # Pre-request latency on the SERVER span (success path).
             self.set_preprocessing_duration_attribute(parent_span, kwargs)
-
-            # http.response.status_code on the SERVER span (success path).
-            # A successful proxy response is HTTP 200; the failure path sets
-            # this from the error code in _record_exception_on_span.
-            self.set_response_status_code_attribute(parent_span, 200)
 
             # 3. Guardrail span
             self._create_guardrail_span(kwargs=kwargs, context=ctx)
@@ -868,10 +1104,12 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
            can be re-read with mutated entries between calls, so dedupe
            must be at entry granularity. Scope: the entry's stable identity.
 
-        ``scope`` parts can be any hashable identity. The marker is stored
-        in ``kwargs["litellm_params"]["metadata"]["_otel_internal"]`` so it
-        is request-local (kwargs is shared across the sync/async callbacks
-        and lifecycle hooks for one request).
+        ``scope`` parts may include unhashable containers (list, dict, set);
+        they are normalized into a hashable shape via ``_freeze_for_dedupe``
+        before keying the marker dict. The marker is stored in
+        ``kwargs["litellm_params"]["metadata"]["_otel_internal"]`` so it is
+        request-local (kwargs is shared across the sync/async callbacks and
+        lifecycle hooks for one request).
         """
         litellm_params = kwargs.get("litellm_params")
         if not isinstance(litellm_params, dict):
@@ -893,7 +1131,11 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             spans_logged = {}
             _otel_internal["spans_logged"] = spans_logged
 
-        dedupe_key = (self.__class__.__name__, id(self), *scope)
+        dedupe_key = (
+            self.__class__.__name__,
+            id(self),
+            *(_freeze_for_dedupe(part) for part in scope),
+        )
         if spans_logged.get(dedupe_key) is True:
             return False
 
@@ -917,13 +1159,28 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         litellm_params = kwargs.get("litellm_params", {}) or {}
         _metadata = litellm_params.get("metadata", {}) or {}
         proxy_span = _metadata.get("litellm_parent_otel_span", None)
+
+        # Fallback: check litellm_metadata (used by /v1/messages and other
+        # LITELLM_METADATA_ROUTES).
+        if proxy_span is None:
+            _litellm_metadata = litellm_params.get("litellm_metadata", {}) or {}
+            proxy_span = _litellm_metadata.get("litellm_parent_otel_span", None)
+
         if (
             proxy_span is not None
             and getattr(proxy_span, "name", None) == LITELLM_PROXY_REQUEST_SPAN_NAME
             and hasattr(proxy_span, "is_recording")
             and proxy_span.is_recording()
         ):
-            proxy_span.end(end_time=self._to_ns(end_time))
+            self._close_proxy_span_ok(proxy_span, end_time)
+
+    def _close_proxy_span_ok(self, span: Span, end_time) -> None:
+        """Stamp http.response.status_code=200 + status=OK, then end the span."""
+        from opentelemetry.trace import Status, StatusCode
+
+        self.set_response_status_code_attribute(span, 200)
+        span.set_status(Status(StatusCode.OK))
+        span.end(end_time=self._to_ns(end_time))
 
     def _handle_success(self, kwargs, response_obj, start_time, end_time):
         """Create the litellm_request span then close the proxy span."""
@@ -1009,8 +1266,14 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             parent_span is not None
             and hasattr(parent_span, "name")
             and parent_span.name == LITELLM_PROXY_REQUEST_SPAN_NAME
+            and hasattr(parent_span, "is_recording")
+            and parent_span.is_recording()
         ):
-            parent_span.end(end_time=self._to_ns(end_time))
+            self._close_proxy_span_ok(parent_span, end_time)
+
+        # Stamp team attributes onto the SERVER (root) span before it is
+        # closed, so the trace root carries them like every child span.
+        self._set_team_attributes_on_proxy_span_from_kwargs(kwargs)
 
         # close the proxy span explicitly from kwargs metadata
         # after all child spans (litellm_request, guardrail, raw_request)
@@ -1070,7 +1333,169 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         )
         raw_span.set_status(Status(StatusCode.OK))
         self.set_raw_request_attributes(raw_span, kwargs, response_obj)
+        self._set_team_attributes_from_kwargs(raw_span, kwargs)
         raw_span.end(end_time=self._to_ns(end_time))
+
+    def _set_team_attributes_on_span(
+        self,
+        span: Span,
+        team_id: Optional[str],
+        team_alias: Optional[str],
+    ) -> None:
+        """Stamp team_id / team_alias onto a span so every child span of a
+        litellm_request trace carries them, not just the root span.
+
+        Empty strings are treated as absent: a request made with the master
+        key or a team-less virtual key carries ``user_api_key_team_id=""``
+        in ``standard_logging_object.metadata``; propagating that to every
+        span only adds noise that makes traces look mis-instrumented.
+        """
+        if team_id:
+            self.safe_set_attribute(
+                span=span,
+                key="metadata.user_api_key_team_id",
+                value=team_id,
+            )
+        if team_alias:
+            self.safe_set_attribute(
+                span=span,
+                key="metadata.user_api_key_team_alias",
+                value=team_alias,
+            )
+
+    def _set_team_attributes_from_kwargs(self, span: Span, kwargs: dict) -> None:
+        """Pull team_id / team_alias from the standard logging metadata in kwargs and stamp them onto span."""
+        std_log = kwargs.get("standard_logging_object")
+        md: dict = {}
+        if isinstance(std_log, dict):
+            md = std_log.get("metadata") or {}
+        elif std_log is not None:
+            md = getattr(std_log, "metadata", None) or {}
+        self._set_team_attributes_on_span(
+            span=span,
+            team_id=md.get("user_api_key_team_id"),
+            team_alias=md.get("user_api_key_team_alias"),
+        )
+
+    def _set_team_attributes_on_proxy_span_from_kwargs(self, kwargs: dict) -> None:
+        """Stamp team attributes onto the proxy SERVER (root) span so the
+        trace root is filterable by team, not just its children. The root
+        span is created in auth before the team is resolved and is
+        otherwise only closed (never re-attributed) on the success path.
+
+        Guarded to the LiteLLM-created proxy span (by name + recording) so
+        externally provided parent spans are never mutated.
+        """
+        litellm_params = kwargs.get("litellm_params") or {}
+        metadata = litellm_params.get("metadata") or {}
+        proxy_span = metadata.get("litellm_parent_otel_span")
+        if (
+            proxy_span is not None
+            and getattr(proxy_span, "name", None) == LITELLM_PROXY_REQUEST_SPAN_NAME
+            and hasattr(proxy_span, "is_recording")
+            and proxy_span.is_recording()
+        ):
+            self._set_team_attributes_from_kwargs(proxy_span, kwargs)
+
+    def _set_inference_identity_attributes(
+        self,
+        span: Span,
+        standard_logging_payload: StandardLoggingPayload,
+        litellm_params: dict,
+    ) -> None:
+        """Stamp request-identity attributes onto an inference span so every
+        LLM-call span is filterable by the route it came in on, the team's
+        metadata, and both the user-facing (model_group alias) and the
+        dispatched (provider) model names. Empty/absent values are skipped.
+        """
+        metadata = standard_logging_payload.get("metadata") or {}
+
+        http_route = metadata.get("user_api_key_request_route")
+        if http_route:
+            self.safe_set_attribute(
+                span=span, key=HTTP_ROUTE_ATTRIBUTE, value=http_route
+            )
+
+        # ``user_api_key_team_metadata`` is dropped from the standard logging
+        # payload metadata, so read it from the raw request metadata in kwargs.
+        # ``metadata`` and ``litellm_metadata`` are alternate names for the same
+        # full metadata dict (the name varies by endpoint), so first-truthy wins.
+        raw_metadata = (
+            litellm_params.get("metadata")
+            or litellm_params.get("litellm_metadata")
+            or {}
+        )
+        team_metadata = self._team_metadata_json(
+            raw_metadata.get("user_api_key_team_metadata"),
+            self.config.baggage_team_metadata_keys,
+        )
+        if team_metadata:
+            self.safe_set_attribute(
+                span=span, key=TEAM_METADATA_ATTRIBUTE, value=team_metadata
+            )
+
+        model_group = standard_logging_payload.get("model_group")
+        if model_group:
+            self.safe_set_attribute(
+                span=span, key=MODEL_GROUP_ATTRIBUTE, value=model_group
+            )
+
+        hidden_params = standard_logging_payload.get("hidden_params") or {}
+        provider_model = hidden_params.get(
+            "litellm_model_name"
+        ) or standard_logging_payload.get("model")
+        if provider_model:
+            self.safe_set_attribute(
+                span=span, key=PROVIDER_MODEL_ATTRIBUTE, value=provider_model
+            )
+
+    @staticmethod
+    def _team_metadata_json(value: Any, allowed_keys: List[str]) -> Optional[str]:
+        """JSON-serialize only the allowlisted sub-keys of a team's metadata.
+
+        Returns ``None`` when nothing is allowlisted or no allowlisted key is
+        present, so the empty case is dropped rather than stamping a useless
+        ``"{}"`` (and so a team's metadata never leaves the process until an
+        operator opts each sub-key in via ``baggage_team_metadata_keys``).
+        """
+        if not isinstance(value, dict) or not value or not allowed_keys:
+            return None
+        filtered = {key: value[key] for key in allowed_keys if key in value}
+        if not filtered:
+            return None
+        return safe_dumps(filtered)
+
+    def _ensure_metric_attribute_filter(self) -> None:
+        """Resolve the include/exclude filter once, falling back to the proxy's
+        callback_settings.otel.attributes when no explicit config was passed."""
+        if self._metric_attr_filter_resolved:
+            return
+        attributes = self.config.attributes
+        if attributes is None and self.callback_name in (None, "otel"):
+            otel_settings = (litellm.callback_settings or {}).get("otel") or {}
+            raw = (
+                otel_settings.get("attributes")
+                if isinstance(otel_settings, dict)
+                else None
+            )
+            if raw is not None:
+                attributes = _build_metric_attribute_filter(raw)
+        (
+            self._metric_attr_include,
+            self._metric_attr_exclude,
+        ) = _resolve_metric_attribute_filter(attributes)
+        self._metric_attr_filter_resolved = True
+
+    def _filter_metric_attributes(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._metric_attr_filter_resolved:
+            self._ensure_metric_attribute_filter()
+        if self._metric_attr_include is not None:
+            return {k: v for k, v in attrs.items() if k in self._metric_attr_include}
+        if self._metric_attr_exclude is not None:
+            return {
+                k: v for k, v in attrs.items() if k not in self._metric_attr_exclude
+            }
+        return attrs
 
     def _record_metrics(self, kwargs, response_obj, start_time, end_time):
         duration_s = (end_time - start_time).total_seconds()
@@ -1090,25 +1515,14 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
 
         std_log = kwargs.get("standard_logging_object")
         md = getattr(std_log, "metadata", None) or (std_log or {}).get("metadata", {})
-        for key in [
-            "user_api_key_hash",
-            "user_api_key_alias",
-            "user_api_key_team_id",
-            "user_api_key_org_id",
-            "user_api_key_user_id",
-            "user_api_key_team_alias",
-            "user_api_key_user_email",
-            "spend_logs_metadata",
-            "requester_ip_address",
-            "requester_metadata",
-            "user_api_key_end_user_id",
-            "prompt_management_metadata",
-            "applied_guardrails",
-            "mcp_tool_call_metadata",
-            "vector_store_request_metadata",
-        ]:
-            if md.get(key) is not None:
-                common_attrs[f"metadata.{key}"] = str(md[key])
+        for key in METRIC_METADATA_KEYS:
+            value = md.get(key)
+            if value is None:
+                continue
+            if isinstance(value, (dict, list)):
+                common_attrs[f"metadata.{key}"] = safe_dumps(value)
+            else:
+                common_attrs[f"metadata.{key}"] = str(value)
 
         # get hidden params
         hidden_params = getattr(std_log, "hidden_params", None) or (std_log or {}).get(
@@ -1116,6 +1530,8 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         )
         if hidden_params:
             common_attrs["hidden_params"] = safe_dumps(hidden_params)
+
+        common_attrs = self._filter_metric_attributes(common_attrs)
 
         if self._operation_duration_histogram:
             self._operation_duration_histogram.record(
@@ -1126,8 +1542,8 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
                 and (usage := response_obj.get("usage"))
                 and self._token_usage_histogram
             ):
-                in_attrs = {**common_attrs, "gen_ai.token.type": "input"}
-                out_attrs = {**common_attrs, "gen_ai.token.type": "output"}
+                in_attrs = {**common_attrs, TOKEN_TYPE_ATTRIBUTE: "input"}
+                out_attrs = {**common_attrs, TOKEN_TYPE_ATTRIBUTE: "output"}
                 self._token_usage_histogram.record(
                     usage.get("prompt_tokens", 0), attributes=in_attrs
                 )
@@ -1526,11 +1942,44 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
                     "masked_entity_count", safe_dumps(masked_entity_count)
                 )
 
+            guardrail_response = guardrail_information.get("guardrail_response")
+            if guardrail_response is not None:
+                guardrail_span.set_attribute(
+                    "guardrail_response", safe_dumps(guardrail_response)
+                )
+
+            # Surface guardrail_status (success / guardrail_intervened /
+            # guardrail_failed_to_respond / not_run) as a top-level span
+            # attribute so trace backends can filter on it without parsing
+            # guardrail_response.
             self.safe_set_attribute(
                 span=guardrail_span,
-                key="guardrail_response",
-                value=guardrail_information.get("guardrail_response"),
+                key="guardrail_status",
+                value=guardrail_information.get("guardrail_status"),
             )
+
+            # Provider's raw top-level action (e.g. Bedrock's
+            # ``GUARDRAIL_INTERVENED`` / ``NONE``). Populated by the provider
+            # hook onto StandardLoggingGuardrailInformation so this integration
+            # stays provider-agnostic — we only read a normalised string.
+            guardrail_action = guardrail_information.get("guardrail_action")
+            if guardrail_action:
+                guardrail_span.set_attribute("guardrail_action", guardrail_action)
+
+            # The provider hook (e.g. Bedrock) extracts violation_categories
+            # from the raw response BEFORE redaction and stamps them onto
+            # StandardLoggingGuardrailInformation. Surfacing them here as a
+            # queryable attribute lets dashboards group by violation category
+            # without parsing the redacted guardrail_response blob.
+            violation_categories = guardrail_information.get("violation_categories")
+            if violation_categories:
+                # OTel sequence attributes must be homogeneous primitives;
+                # serialise to JSON once so set_attribute never coerces.
+                guardrail_span.set_attribute(
+                    "guardrail_violation_categories", safe_dumps(violation_categories)
+                )
+
+            self._set_team_attributes_from_kwargs(guardrail_span, kwargs)
 
             guardrail_span.end(end_time=self._to_ns(end_time_datetime))
 
@@ -1786,9 +2235,7 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
 
         return kv_pairs
 
-    def set_attributes(  # noqa: PLR0915
-        self, span: Span, kwargs, response_obj: Optional[Any]
-    ):
+    def set_attributes(self, span: Span, kwargs, response_obj: Optional[Any]):
         try:
             if self.callback_name == "langtrace":
                 from litellm.integrations.langtrace import LangtraceAttributes
@@ -1844,6 +2291,12 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
                     key="hidden_params",
                     value=safe_dumps(hidden_params),
                 )
+
+            self._set_inference_identity_attributes(
+                span=span,
+                standard_logging_payload=standard_logging_payload,
+                litellm_params=litellm_params,
+            )
             # Cost breakdown tracking
             cost_breakdown: Optional[CostBreakdown] = standard_logging_payload.get(
                 "cost_breakdown"
@@ -2385,6 +2838,10 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             )
 
     def _to_ns(self, dt):
+        if dt is None:
+            return int(datetime.now().timestamp() * 1e9)
+        if isinstance(dt, (int, float)):
+            return int(dt * 1e9)
         return int(dt.timestamp() * 1e9)
 
     def _get_span_name(self, kwargs):
@@ -2430,6 +2887,13 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
         traceparent = headers.get("traceparent", None)
         _metadata = litellm_params.get("metadata", {}) or {}
         parent_otel_span = _metadata.get("litellm_parent_otel_span", None)
+
+        # Fallback: check litellm_metadata (used by /v1/messages and other
+        # LITELLM_METADATA_ROUTES that store proxy-internal metadata
+        # separately from the provider's native "metadata" field).
+        if parent_otel_span is None:
+            _litellm_metadata = litellm_params.get("litellm_metadata", {}) or {}
+            parent_otel_span = _litellm_metadata.get("litellm_parent_otel_span", None)
 
         # Priority 1: Explicit parent span from metadata
         if parent_otel_span is not None:
@@ -2875,6 +3339,11 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             management_endpoint_span.set_status(Status(StatusCode.OK))
             management_endpoint_span.end(end_time=_end_time_ns)
 
+            # The management wrapper has no other hook that closes the SERVER span.
+            self.set_response_status_code_attribute(parent_otel_span, 200)
+            parent_otel_span.set_status(Status(StatusCode.OK))
+            parent_otel_span.end(end_time=_end_time_ns)
+
     async def async_management_endpoint_failure_hook(
         self,
         logging_payload: ManagementEndpointLoggingPayload,
@@ -2924,6 +3393,24 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             )
             management_endpoint_span.set_status(Status(StatusCode.ERROR))
             management_endpoint_span.end(end_time=_end_time_ns)
+
+            # The management wrapper has no other hook that closes the SERVER span.
+            from litellm.litellm_core_utils.litellm_logging import (
+                StandardLoggingPayloadSetup,
+            )
+
+            error_information = StandardLoggingPayloadSetup.get_error_information(
+                original_exception=_exception,
+            )
+            parent_otel_span.set_status(Status(StatusCode.ERROR))
+            self._record_exception_on_span(
+                span=parent_otel_span,
+                kwargs={
+                    "exception": _exception,
+                    "standard_logging_object": {"error_information": error_information},
+                },
+            )
+            parent_otel_span.end(end_time=_end_time_ns)
 
     def create_litellm_proxy_request_started_span(
         self,
@@ -2979,6 +3466,32 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
             span=span,
             key=HTTP_RESPONSE_STATUS_CODE_ATTRIBUTE,
             value=int(status_code),
+        )
+
+    def record_error_attributes_on_span(
+        self,
+        span: Optional[Span],
+        exception: Optional[Exception],
+        status_code: int,
+    ) -> None:
+        """Stamp structured ``error.*`` attributes on the SERVER span from the
+        exception returned to the client, with ``error.code`` pinned to the real
+        response status. Idempotent (overwrites); emits no exception event."""
+        if span is None or exception is None:
+            return
+        from litellm.litellm_core_utils.litellm_logging import (
+            StandardLoggingPayloadSetup,
+        )
+
+        error_information = StandardLoggingPayloadSetup.get_error_information(
+            original_exception=exception
+        )
+        error_information["error_code"] = str(status_code)
+        self._record_exception_on_span(
+            span=span,
+            kwargs={
+                "standard_logging_object": {"error_information": error_information}
+            },
         )
 
     def set_preprocessing_duration_attribute(
