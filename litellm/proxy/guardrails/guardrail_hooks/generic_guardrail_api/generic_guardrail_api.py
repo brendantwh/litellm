@@ -7,7 +7,7 @@
 
 import fnmatch
 import os
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set
 
 import httpx
 
@@ -33,6 +33,7 @@ from litellm.types.utils import GenericGuardrailAPIInputs
 
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+    from litellm.types.proxy.guardrails.guardrail_hooks.base import GuardrailConfigModel
 
 GUARDRAIL_NAME = "generic_guardrail_api"
 
@@ -57,7 +58,7 @@ _HEADER_PRESENT_PLACEHOLDER = "[present]"
 
 def _header_value_allowed(
     header_name: str,
-    extra_allowlist: Optional[Set[str]] = None,
+    extra_allowlist: Set[str] | None = None,
 ) -> bool:
     """Return True if this header's value may be forwarded (allowlist, including globs and extra_headers)."""
     lower = header_name.lower()
@@ -73,8 +74,8 @@ def _header_value_allowed(
 
 def _sanitize_inbound_headers(
     headers: Any,
-    extra_allowlist: Optional[Set[str]] = None,
-) -> Optional[Dict[str, str]]:
+    extra_allowlist: Set[str] | None = None,
+) -> Dict[str, str] | None:
     """
     Sanitize inbound headers before passing them to a 3rd party guardrail service.
 
@@ -104,8 +105,8 @@ def _sanitize_inbound_headers(
 def _extract_inbound_headers(
     request_data: dict,
     logging_obj: Optional["LiteLLMLoggingObj"],
-    extra_allowlist: Optional[Set[str]] = None,
-) -> Optional[Dict[str, str]]:
+    extra_allowlist: Set[str] | None = None,
+) -> Dict[str, str] | None:
     """
     Extract inbound headers from available request context.
 
@@ -128,31 +129,19 @@ def _extract_inbound_headers(
     # 3) Pre-call: headers stored in request metadata
     metadata_headers = (request_data.get("metadata") or {}).get("headers")
     if metadata_headers:
-        return _sanitize_inbound_headers(
-            metadata_headers, extra_allowlist=extra_allowlist
-        )
+        return _sanitize_inbound_headers(metadata_headers, extra_allowlist=extra_allowlist)
 
-    litellm_metadata_headers = (request_data.get("litellm_metadata") or {}).get(
-        "headers"
-    )
+    litellm_metadata_headers = (request_data.get("litellm_metadata") or {}).get("headers")
     if litellm_metadata_headers:
-        return _sanitize_inbound_headers(
-            litellm_metadata_headers, extra_allowlist=extra_allowlist
-        )
+        return _sanitize_inbound_headers(litellm_metadata_headers, extra_allowlist=extra_allowlist)
 
     # 4) Post-call: headers not present on response; fallback to logging object
     if logging_obj and getattr(logging_obj, "model_call_details", None):
         try:
             details = logging_obj.model_call_details or {}
-            headers = (
-                details.get("litellm_params", {})
-                .get("metadata", {})
-                .get("headers", None)
-            )
+            headers = details.get("litellm_params", {}).get("metadata", {}).get("headers", None)
             if headers:
-                return _sanitize_inbound_headers(
-                    headers, extra_allowlist=extra_allowlist
-                )
+                return _sanitize_inbound_headers(headers, extra_allowlist=extra_allowlist)
         except Exception:
             pass
 
@@ -183,18 +172,19 @@ class GenericGuardrailAPI(CustomGuardrail):
 
     def __init__(
         self,
-        headers: Optional[Dict[str, Any]] = None,
-        api_base: Optional[str] = None,
-        api_key: Optional[str] = None,
-        additional_provider_specific_params: Optional[Dict[str, Any]] = None,
+        headers: Dict[str, Any] | None = None,
+        api_base: str | None = None,
+        api_key: str | None = None,
+        additional_provider_specific_params: Dict[str, Any] | None = None,
         unreachable_fallback: Literal["fail_closed", "fail_open"] = "fail_closed",
-        fail_on_error: Optional[bool] = True,
-        extra_headers: Optional[list] = None,
+        fail_on_error: bool | None = True,
+        extra_headers: list | None = None,
+        streaming_end_of_stream_only: bool | None = None,
+        streaming_sampling_rate: int | None = None,
+        streaming_transform_mode: Literal["block_only", "incremental_diff"] | None = None,
         **kwargs,
     ):
-        self.async_handler = get_async_httpx_client(
-            llm_provider=httpxSpecialProvider.GuardrailCallback
-        )
+        self.async_handler = get_async_httpx_client(llm_provider=httpxSpecialProvider.GuardrailCallback)
         self.headers = headers or {}
         self.extra_headers = extra_headers or []
 
@@ -217,33 +207,36 @@ class GenericGuardrailAPI(CustomGuardrail):
         else:
             self.api_base = base_url
 
-        self.additional_provider_specific_params = (
-            additional_provider_specific_params or {}
-        )
+        self.additional_provider_specific_params = additional_provider_specific_params or {}
 
-        self.unreachable_fallback: Literal["fail_closed", "fail_open"] = (
-            unreachable_fallback
-        )
+        self.unreachable_fallback: Literal["fail_closed", "fail_open"] = unreachable_fallback
 
         self.fail_on_error: bool = True if fail_on_error is None else fail_on_error
 
+        # Read by UnifiedLLMGuardrails.async_post_call_streaming_iterator_hook
+        # via getattr(guardrail_to_apply, "streaming_*", default).
+        self.streaming_end_of_stream_only: bool = (
+            False if streaming_end_of_stream_only is None else streaming_end_of_stream_only
+        )
+        if streaming_sampling_rate is not None and streaming_sampling_rate < 1:
+            raise ValueError(f"streaming_sampling_rate must be >= 1 (got {streaming_sampling_rate})")
+        self.streaming_sampling_rate: int = 5 if streaming_sampling_rate is None else streaming_sampling_rate
+
+        # Read by UnifiedLLMGuardrails.async_post_call_streaming_iterator_hook.
+        # "block_only" (default) drops text rewrites on the streaming path;
+        # "incremental_diff" emits them as synthetic deltas.
+        self.streaming_transform_mode: Literal["block_only", "incremental_diff"] = (
+            "block_only" if streaming_transform_mode is None else streaming_transform_mode
+        )
+
         # Set supported event hooks
-        if "supported_event_hooks" not in kwargs:
-            kwargs["supported_event_hooks"] = [
-                GuardrailEventHooks.pre_call,
-                GuardrailEventHooks.post_call,
-                GuardrailEventHooks.during_call,
-            ]
+        kwargs.setdefault("supported_event_hooks", list(self.get_supported_event_hooks()))
 
         super().__init__(**kwargs)
 
-        verbose_proxy_logger.debug(
-            "Generic Guardrail API initialized with api_base: %s", self.api_base
-        )
+        verbose_proxy_logger.debug("Generic Guardrail API initialized with api_base: %s", self.api_base)
 
-    def _extract_user_api_key_metadata(
-        self, request_data: dict
-    ) -> GenericGuardrailAPIMetadata:
+    def _extract_user_api_key_metadata(self, request_data: dict) -> GenericGuardrailAPIMetadata:
         """
         Extract user API key metadata from request_data.
 
@@ -279,9 +272,7 @@ class GenericGuardrailAPI(CustomGuardrail):
 
         # handle user_api_key_token = user_api_key_hash
         if metadata_dict.get("user_api_key_token") is not None:
-            result_metadata["user_api_key_hash"] = metadata_dict.get(
-                "user_api_key_token"
-            )
+            result_metadata["user_api_key_hash"] = metadata_dict.get("user_api_key_token")
 
         verbose_proxy_logger.debug(
             "Generic Guardrail API: Extracted user metadata: %s",
@@ -297,11 +288,9 @@ class GenericGuardrailAPI(CustomGuardrail):
         input_type: Literal["request", "response"],
         logging_obj: Optional["LiteLLMLoggingObj"],
         error: Exception,
-        http_status_code: Optional[int] = None,
+        http_status_code: int | None = None,
     ) -> GenericGuardrailAPIInputs:
-        status_suffix = (
-            f" http_status_code={http_status_code}" if http_status_code else ""
-        )
+        status_suffix = f" http_status_code={http_status_code}" if http_status_code else ""
         verbose_proxy_logger.critical(
             "Generic Guardrail API error (fail-open). Proceeding without guardrail.%s "
             "guardrail_name=%s api_base=%s input_type=%s litellm_call_id=%s litellm_trace_id=%s",
@@ -345,6 +334,8 @@ class GenericGuardrailAPI(CustomGuardrail):
             return_inputs["tools"] = guardrail_response.tools
         elif tools:
             return_inputs["tools"] = tools
+        if guardrail_response.stream_holdback_chars is not None:
+            return_inputs["stream_holdback_chars"] = guardrail_response.stream_holdback_chars
         return return_inputs
 
     def _handle_guardrail_request_error(
@@ -355,13 +346,9 @@ class GenericGuardrailAPI(CustomGuardrail):
         logging_obj: Optional["LiteLLMLoggingObj"],
         is_unreachable: bool = True,
     ) -> GenericGuardrailAPIInputs:
-        unreachable_fail_open = (
-            is_unreachable and self.unreachable_fallback == "fail_open"
-        )
+        unreachable_fail_open = is_unreachable and self.unreachable_fallback == "fail_open"
         if unreachable_fail_open or not self.fail_on_error:
-            http_status_code = getattr(
-                getattr(error, "response", None), "status_code", None
-            )
+            http_status_code = getattr(getattr(error, "response", None), "status_code", None)
             return self._fail_open_passthrough(
                 inputs=inputs,
                 input_type=input_type,
@@ -369,9 +356,7 @@ class GenericGuardrailAPI(CustomGuardrail):
                 error=error,
                 **({"http_status_code": http_status_code} if http_status_code else {}),
             )
-        verbose_proxy_logger.error(
-            "Generic Guardrail API: failed to make request: %s", str(error)
-        )
+        verbose_proxy_logger.error("Generic Guardrail API: failed to make request: %s", str(error))
         raise Exception(f"Generic Guardrail API failed: {str(error)}")
 
     @log_guardrail_information
@@ -428,11 +413,7 @@ class GenericGuardrailAPI(CustomGuardrail):
 
         # Extract user API key metadata
         user_metadata = self._extract_user_api_key_metadata(request_data)
-        extra_allowlist = (
-            {h.lower() for h in self.extra_headers if isinstance(h, str)}
-            if self.extra_headers
-            else None
-        )
+        extra_allowlist = {h.lower() for h in self.extra_headers if isinstance(h, str)} if self.extra_headers else None
         inbound_headers = _extract_inbound_headers(
             request_data=request_data,
             logging_obj=logging_obj,
@@ -449,11 +430,7 @@ class GenericGuardrailAPI(CustomGuardrail):
                 request_headers=inbound_headers,
                 litellm_version=litellm_version,
                 images=images,
-                tools=(
-                    [GuardrailToolParam.model_validate(t) for t in tools]
-                    if tools
-                    else None
-                ),
+                tools=([GuardrailToolParam.model_validate(t) for t in tools] if tools else None),
                 structured_messages=structured_messages,
                 tool_calls=tool_calls,
                 additional_provider_specific_params=additional_params,
@@ -474,21 +451,15 @@ class GenericGuardrailAPI(CustomGuardrail):
             response.raise_for_status()
             response_json = response.json()
 
-            verbose_proxy_logger.debug(
-                "Generic Guardrail API response: %s", response_json
-            )
+            verbose_proxy_logger.debug("Generic Guardrail API response: %s", response_json)
 
             guardrail_response = GenericGuardrailAPIResponse.from_dict(response_json)
 
             # Handle the response
             if guardrail_response.action == "BLOCKED":
                 # Block the request
-                error_message = (
-                    guardrail_response.blocked_reason or "Content violates policy"
-                )
-                verbose_proxy_logger.warning(
-                    "Generic Guardrail API blocked request: %s", error_message
-                )
+                error_message = guardrail_response.blocked_reason or "Content violates policy"
+                verbose_proxy_logger.warning("Generic Guardrail API blocked request: %s", error_message)
                 raise GuardrailRaisedException(
                     guardrail_name=GUARDRAIL_NAME,
                     message=error_message,
@@ -505,9 +476,7 @@ class GenericGuardrailAPI(CustomGuardrail):
         except GuardrailRaisedException:
             raise
         except Timeout as e:
-            return self._handle_guardrail_request_error(
-                e, inputs, input_type, logging_obj
-            )
+            return self._handle_guardrail_request_error(e, inputs, input_type, logging_obj)
         except httpx.HTTPStatusError as e:
             status_code = getattr(getattr(e, "response", None), "status_code", None)
             is_unreachable = status_code in (502, 503, 504)
@@ -515,10 +484,22 @@ class GenericGuardrailAPI(CustomGuardrail):
                 e, inputs, input_type, logging_obj, is_unreachable=is_unreachable
             )
         except httpx.RequestError as e:
-            return self._handle_guardrail_request_error(
-                e, inputs, input_type, logging_obj
-            )
+            return self._handle_guardrail_request_error(e, inputs, input_type, logging_obj)
         except Exception as e:
-            return self._handle_guardrail_request_error(
-                e, inputs, input_type, logging_obj, is_unreachable=False
-            )
+            return self._handle_guardrail_request_error(e, inputs, input_type, logging_obj, is_unreachable=False)
+
+    @staticmethod
+    def get_config_model() -> type["GuardrailConfigModel"] | None:
+        from litellm.types.proxy.guardrails.guardrail_hooks.generic_guardrail_api import (
+            GenericGuardrailAPIConfigModel,
+        )
+
+        return GenericGuardrailAPIConfigModel
+
+    @classmethod
+    def get_supported_event_hooks(cls) -> List[GuardrailEventHooks]:
+        return [
+            GuardrailEventHooks.pre_call,
+            GuardrailEventHooks.post_call,
+            GuardrailEventHooks.during_call,
+        ]

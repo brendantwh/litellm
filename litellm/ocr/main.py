@@ -7,9 +7,10 @@ import base64
 import mimetypes
 import os
 import re
+from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from io import IOBase
-from typing import Any, Callable, Coroutine, Union, cast
+from typing import Any, cast
 
 import httpx
 
@@ -17,6 +18,9 @@ import litellm
 from litellm._logging import verbose_logger
 from litellm.constants import request_timeout
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+from litellm.llms.azure_ai.ocr.common_utils import (
+    is_azure_document_intelligence_model,
+)
 from litellm.llms.base_llm.ocr.transformation import BaseOCRConfig, OCRResponse
 from litellm.llms.custom_httpx.llm_http_handler import BaseLLMHTTPHandler
 from litellm.rust_bridge import ocr as rust_ocr_bridge
@@ -39,7 +43,7 @@ class _PreparedOCRRequest:
     provider_config: BaseOCRConfig
     optional_params: dict[str, object]
     litellm_params: dict[str, object]
-    effective_timeout: Union[float, httpx.Timeout]
+    effective_timeout: float | httpx.Timeout
     litellm_logging_obj: LiteLLMLoggingObj
 
 
@@ -60,21 +64,19 @@ _RUST_OCR_PROVIDERS = {
 
 def _prepare_ocr_request(
     model: str,
-    document: dict[str, Any],
+    document: Mapping[str, object],
     api_key: str | None,
     api_base: str | None,
-    timeout: Union[float, httpx.Timeout] | None,
+    timeout: float | httpx.Timeout | None,
     custom_llm_provider: str | None,
-    extra_headers: dict[str, Any] | None,
-    kwargs: dict[str, Any],
+    extra_headers: dict[str, object] | None,
+    kwargs: dict[str, object],
 ) -> _PreparedOCRRequest:
     litellm_logging_obj = cast(LiteLLMLoggingObj, kwargs.pop("litellm_logging_obj"))
     litellm_call_id = cast(str | None, kwargs.get("litellm_call_id", None))
 
     if not isinstance(document, dict):
-        raise ValueError(
-            f"document must be a dict with 'type' and URL/file field, got {type(document)}"
-        )
+        raise ValueError(f"document must be a dict with 'type' and URL/file field, got {type(document)}")
 
     doc_type = document.get("type")
 
@@ -83,10 +85,9 @@ def _prepare_ocr_request(
         doc_type = document.get("type")
 
     if doc_type not in ["document_url", "image_url"]:
-        raise ValueError(
-            f"Invalid document type: {doc_type}. "
-            "Must be 'document_url', 'image_url', or 'file'"
-        )
+        raise ValueError(f"Invalid document type: {doc_type}. Must be 'document_url', 'image_url', or 'file'")
+
+    caller_supplied_api_base = api_base is not None
 
     (
         model,
@@ -100,9 +101,14 @@ def _prepare_ocr_request(
         api_key=api_key,
     )
 
+    suppress_dynamic_api_base = (
+        not caller_supplied_api_base
+        and custom_llm_provider == "azure_ai"
+        and is_azure_document_intelligence_model(model)
+    )
     if dynamic_api_key:
         api_key = dynamic_api_key
-    if dynamic_api_base:
+    if dynamic_api_base and not suppress_dynamic_api_base:
         api_base = dynamic_api_base
 
     ocr_provider_config = ProviderConfigManager.get_provider_ocr_config(
@@ -115,7 +121,7 @@ def _prepare_ocr_request(
 
     verbose_logger.debug(f"OCR call - model: {model}, provider: {custom_llm_provider}")
 
-    litellm_params = GenericLiteLLMParams(**kwargs)
+    litellm_params = GenericLiteLLMParams.model_validate(kwargs)
 
     supported_params = ocr_provider_config.get_supported_ocr_params(model=model)
     non_default_params = {}
@@ -150,7 +156,7 @@ def _prepare_ocr_request(
         api_key=api_key,
         api_base=api_base,
         custom_llm_provider=custom_llm_provider,
-        extra_headers=cast(dict[str, object] | None, extra_headers),
+        extra_headers=extra_headers,
         provider_config=ocr_provider_config,
         optional_params=cast(dict[str, object], optional_params),
         litellm_params=dict(litellm_params),
@@ -196,8 +202,7 @@ def _rust_bridge_api_base(
     if prepared_request.api_base is not None:
         return prepared_request.api_base
     if prepared_request.custom_llm_provider == "azure_ai":
-        model = prepared_request.model.lower()
-        if "doc-intelligence" in model or "documentintelligence" in model:
+        if is_azure_document_intelligence_model(prepared_request.model):
             return resolve_secret("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
         return resolve_secret("AZURE_AI_API_BASE")
     return None
@@ -226,9 +231,7 @@ def _prepare_rust_ocr_call(
         litellm_params=prepared_request.litellm_params,
     )
     rust_api_base = _rust_bridge_api_base(prepared_request, resolve_api_key)
-    rust_optional_params = _rust_bridge_optional_params(
-        prepared_request, resolve_api_key
-    )
+    rust_optional_params = _rust_bridge_optional_params(prepared_request, resolve_api_key)
     prepared_request.litellm_logging_obj.pre_call(
         input="OCR document processing",
         api_key=resolved_api_key,
@@ -303,13 +306,13 @@ async def _run_rust_aocr(
 @client
 async def aocr(
     model: str,
-    document: dict[str, Any],
+    document: Mapping[str, object],
     api_key: str | None = None,
     api_base: str | None = None,
-    timeout: Union[float, httpx.Timeout] | None = None,
+    timeout: float | httpx.Timeout | None = None,
     custom_llm_provider: str | None = None,
-    extra_headers: dict[str, Any] | None = None,
-    **kwargs,
+    extra_headers: dict[str, object] | None = None,
+    **kwargs: object,
 ) -> OCRResponse:
     """
     Async OCR function.
@@ -392,9 +395,7 @@ async def aocr(
         )
         model = prepared.model
         custom_llm_provider = prepared.custom_llm_provider
-        completion_kwargs.update(
-            {"model": model, "custom_llm_provider": custom_llm_provider}
-        )
+        completion_kwargs.update({"model": model, "custom_llm_provider": custom_llm_provider})
 
         if _rust_ocr_supported(prepared) and rust_ocr_bridge.rust_ocr_enabled():
             from litellm.secret_managers.main import get_secret_str
@@ -404,9 +405,7 @@ async def aocr(
                 resolve_api_key=get_secret_str,
             )
             if rust_response is None:
-                verbose_logger.debug(
-                    "Async Rust OCR bridge unavailable; falling back to Python path"
-                )
+                verbose_logger.debug("Async Rust OCR bridge unavailable; falling back to Python path")
             else:
                 return rust_response
 
@@ -429,9 +428,7 @@ async def aocr(
             response = await response
 
         if response is None:
-            raise ValueError(
-                f"Got an unexpected None response from the OCR API: {response}"
-            )
+            raise ValueError(f"Got an unexpected None response from the OCR API: {response}")
 
         return response
     except Exception as e:
@@ -539,8 +536,7 @@ def convert_file_document_to_url_document(document: dict[str, Any]) -> dict[str,
             file_bytes = file_bytes.encode("utf-8")
     else:
         raise ValueError(
-            f"Unsupported file input type: {type(file_input)}. "
-            "Expected pathlib.Path, bytes, or a file-like object."
+            f"Unsupported file input type: {type(file_input)}. Expected pathlib.Path, bytes, or a file-like object."
         )
 
     if not file_bytes:
@@ -572,14 +568,14 @@ def convert_file_document_to_url_document(document: dict[str, Any]) -> dict[str,
 @client
 def ocr(
     model: str,
-    document: dict[str, Any],
+    document: Mapping[str, object],
     api_key: str | None = None,
     api_base: str | None = None,
-    timeout: Union[float, httpx.Timeout] | None = None,
+    timeout: float | httpx.Timeout | None = None,
     custom_llm_provider: str | None = None,
-    extra_headers: dict[str, Any] | None = None,
-    **kwargs,
-) -> Union[OCRResponse, Coroutine[Any, Any, OCRResponse]]:
+    extra_headers: dict[str, object] | None = None,
+    **kwargs: object,
+) -> OCRResponse | Coroutine[object, object, OCRResponse]:
     """
     Synchronous OCR function.
 
@@ -667,9 +663,7 @@ def ocr(
         )
         model = prepared.model
         custom_llm_provider = prepared.custom_llm_provider
-        completion_kwargs.update(
-            {"model": model, "custom_llm_provider": custom_llm_provider}
-        )
+        completion_kwargs.update({"model": model, "custom_llm_provider": custom_llm_provider})
 
         if _rust_ocr_supported(prepared) and rust_ocr_bridge.rust_ocr_enabled():
             from litellm.secret_managers.main import get_secret_str
@@ -679,9 +673,7 @@ def ocr(
                 resolve_api_key=get_secret_str,
             )
             if rust_response is None:
-                verbose_logger.debug(
-                    "Rust OCR bridge unavailable; falling back to Python path"
-                )
+                verbose_logger.debug("Rust OCR bridge unavailable; falling back to Python path")
             else:
                 return rust_response
 

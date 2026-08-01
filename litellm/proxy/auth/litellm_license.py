@@ -81,9 +81,7 @@ class LicenseCheck:
             assert isinstance(premium, bool)
 
             verbose_proxy_logger.debug(
-                "litellm.proxy.auth.litellm_license.py::_verify - License={} is premium={}".format(
-                    license_str, premium
-                )
+                "litellm.proxy.auth.litellm_license.py::_verify - License={} is premium={}".format(license_str, premium)
             )
             return premium
         except Exception as e:
@@ -206,9 +204,7 @@ class LicenseCheck:
             verbose_proxy_logger.debug("License data: %s", license_data)
 
             # Check expiration date
-            expiration_date = datetime.strptime(
-                license_data["expiration_date"], "%Y-%m-%d"
-            )
+            expiration_date = datetime.strptime(license_data["expiration_date"], "%Y-%m-%d")
             if expiration_date < datetime.now():
                 return False, "License has expired"
 
